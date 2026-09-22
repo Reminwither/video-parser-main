@@ -5,6 +5,7 @@
 """
 
 import os
+import base64
 import time
 import random
 import string
@@ -13,6 +14,7 @@ import requests
 import subprocess
 import gradio as gr
 from typing import Optional, Tuple
+from starlette.types import ASGIApp, Scope, Receive, Send
 from urllib.parse import urlparse, parse_qs, urlencode
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -1180,6 +1182,45 @@ def install_ffmpeg():
             print("请手动安装 ffmpeg 或在部署平台配置 packages.txt")
 
 
+# ==================== 访问鉴权中间件（Basic Auth）====================
+# 仓库为公开仓库，密码不写死在代码里，从环境变量 APP_USER / APP_PASS 读取
+# 在 ASGI 层包裹整个应用：未携带正确凭证一律 401（HTTP）或关闭连接（WebSocket）
+# 例外：/health 放行，否则容器 HEALTHCHECK 会判定 unhealthy
+class BasicAuthMiddleware:
+    def __init__(self, app: ASGIApp, username: str, password: str):
+        self.app = app
+        self.expected = "Basic " + base64.b64encode(
+            f"{username}:{password}".encode("utf-8")
+        ).decode("ascii")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope.get("type") in ("http", "websocket"):
+            path = scope.get("path", "")
+            # 容器健康检查放行，否则会被判定 unhealthy
+            if path == "/health":
+                await self.app(scope, receive, send)
+                return
+            headers = dict(scope.get("headers", []))
+            auth = headers.get(b"authorization", b"").decode("latin-1")
+            if auth == self.expected:
+                await self.app(scope, receive, send)
+                return
+            if scope.get("type") == "websocket":
+                await send({"type": "websocket.close", "code": 1008})
+                return
+            await send({
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"text/plain; charset=utf-8"),
+                    (b"www-authenticate", b'Basic realm="video-parser"'),
+                ],
+            })
+            await send({"type": "http.response.body", "body": b"401 Unauthorized"})
+            return
+        await self.app(scope, receive, send)
+
+
 # ==================== 主程序 ====================
 
 if __name__ == "__main__":
@@ -1212,7 +1253,16 @@ if __name__ == "__main__":
     # 挂载 FastAPI 应用到 Gradio
     # 这使得 API 和 Gradio 可以共享同一个端口 (7860)
     combined_app = gr.mount_gradio_app(api_app, app, path="/")
-    
+
+    # 访问鉴权：若服务器 .env 配置了 APP_PASS，则启用 Basic Auth（账号密码从环境变量读）
+    _app_user = os.getenv("APP_USER", "admin")
+    _app_pass = os.getenv("APP_PASS", "")
+    if _app_pass:
+        combined_app = BasicAuthMiddleware(combined_app, _app_user, _app_pass)
+        print("已启用 Basic Auth 访问鉴权")
+    else:
+        print("警告：未配置 APP_PASS，工作台将无访问鉴权，请尽快在 .env 配置")
+
     import uvicorn
     print("正在启动服务，请访问 http://localhost:7860")
     uvicorn.run(

@@ -39,6 +39,8 @@ jobs:
               --restart unless-stopped \
               -p 7860:7860 \
               --env-file /opt/video-parser/.env \
+              -e APP_USER=admin \
+              -e APP_PASS=${{ secrets.APP_PASS }} \
               -v /opt/video-parser/downloads:/app/downloads \
               -v /opt/video-parser/cache:/app/cache \
               -v /opt/video-parser/logs:/app/logs \
