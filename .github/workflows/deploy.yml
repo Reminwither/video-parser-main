@@ -10,6 +10,24 @@ jobs:
     name: SSH deploy & restart service
     runs-on: ubuntu-latest
     steps:
+      - name: Check out release commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Transfer Git bundle to server
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_PRIVATE_KEY"
+          git bundle create deploy.bundle HEAD
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/video-parser-deploy"
+          chmod 600 "$HOME/.ssh/video-parser-deploy"
+          printf '%s\n' '110.40.138.167 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJYu1mauq0iI3U/9HflbLGyyd7K+qTNybC1xFOS8r/WH' >> "$HOME/.ssh/known_hosts"
+          scp -i "$HOME/.ssh/video-parser-deploy" -o StrictHostKeyChecking=yes deploy.bundle root@110.40.138.167:/opt/video-parser/deploy.bundle
+
       - name: Deploy over SSH ( pull + rebuild + restart)
         uses: appleboy/ssh-action@v1
         with:
@@ -23,19 +41,11 @@ jobs:
           script: |
             set -e
             test -n "$APP_PASS" || { echo "APP_PASS secret is required"; exit 1; }
-            echo "==> [1/4] 拉取最新代码"
+            echo "==> [1/4] 导入本次提交"
             cd /opt/video-parser
-            for attempt in 1 2 3 4 5; do
-              if git fetch origin ${{ github.ref_name }}; then
-                break
-              fi
-              if [ "$attempt" -eq 5 ]; then
-                echo "git fetch failed after 5 attempts"
-                exit 1
-              fi
-              sleep 5
-            done
+            git fetch ./deploy.bundle HEAD
             git reset --hard FETCH_HEAD
+            rm -f deploy.bundle
 
             echo "==> [2/4] 用国内镜像重新构建镜像"
             # /opt/Dockerfile.prod 是服务器本地的「换国内源 + tuna pip」构建文件
