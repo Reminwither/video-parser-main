@@ -650,7 +650,7 @@ async def _async_download_video(progress) -> Tuple[str, str]:
             return None, msg
 
 
-def extract_video_content(progress=gr.Progress()) -> Tuple[str, str]:
+def extract_video_content(multi_speaker: bool = False, progress=gr.Progress()) -> Tuple[str, str]:
     """
     按时间轴建立多模态证据后生成视频分析。
 
@@ -690,10 +690,12 @@ def extract_video_content(progress=gr.Progress()) -> Tuple[str, str]:
             video_info=current_video_info,
             max_frames=MAX_ANALYSIS_FRAMES,
             progress=report_progress,
+            diarize=bool(multi_speaker),
         )
+        diarize_note = "多人转写已开启" if multi_speaker else ""
         status = (
             f"证据优先分析完成：{len(evidence.frames)} 个时间点，"
-            f"{len(evidence.subtitles)} 条字幕，ASR={evidence.transcript_status}"
+            f"{len(evidence.subtitles)} 条字幕，ASR={evidence.transcript_status} {diarize_note}"
         )
         return result, status
 
@@ -1047,6 +1049,11 @@ def create_app():
 
                 # 视频内容提取
                 gr.HTML('<div class="vp-divider"></div>')
+                multi_speaker_chk = gr.Checkbox(
+                    label="多人转写（说话人分离）",
+                    value=False,
+                    info="开启后按说话人标注输出；需在 .env 配置 ASR_SPEAKER_BACKEND 后端",
+                )
                 extract_btn = gr.Button("AI 时间轴证据分析", variant="secondary", elem_classes=["vp-extract"])
                 content_output = gr.Textbox(
                     label="视频证据与分析报告",
@@ -1108,7 +1115,7 @@ def create_app():
 
         extract_btn.click(
             fn=extract_video_content,
-            inputs=[],
+            inputs=[multi_speaker_chk],
             outputs=[content_output, status_output]
         )
 

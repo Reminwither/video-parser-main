@@ -17,9 +17,12 @@ import hashlib
 import json
 import math
 import os
+import random
 import re
+import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterable, Optional, Sequence
@@ -39,6 +42,7 @@ class TimedText:
     end: float
     text: str
     source: str
+    speaker: str = ""  # 分类标签，如 "01"/"02"；空表示未标注（单人口播）
 
 
 @dataclass
@@ -86,6 +90,289 @@ def _env_float(name: str, default: float, minimum: float = 0.0) -> float:
         return max(minimum, float(os.getenv(name, str(default))))
     except (TypeError, ValueError):
         return default
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _asr_diarize_enabled() -> bool:
+    """多人转写默认关闭；由调用方（工作台开关）或 ASR_DIARIZE 环境变量开启。"""
+    return _env_bool("ASR_DIARIZE", False)
+
+
+def _speaker_backend() -> str:
+    return os.getenv("ASR_SPEAKER_BACKEND", "").strip().lower()
+
+
+def _extract_16k_wav(media_path: str, out_path: str) -> None:
+    ffmpeg = os.getenv("FFMPEG_PATH", "ffmpeg")
+    cmd = [
+        ffmpeg, "-y", "-i", media_path,
+        "-vn", "-ac", "1", "-ar", "16000",
+        "-c:a", "pcm_s16le", out_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"抽取 16k 音轨失败: {(result.stderr or '')[-300:]}")
+
+
+def _diarization_annotation(diarization) -> object:
+    """归一化 pyannote 3.x（Annotation）与 4.x（DiarizeOutput）的返回对象。"""
+    ann = getattr(diarization, "speaker_diarization", None)
+    return ann if ann is not None else diarization
+
+
+def _assign_labels_by_overlap(
+    intervals: Sequence[tuple[float, float, str]], cues: Sequence[TimedText]
+) -> list[TimedText]:
+    """按说话人片段与 ASR 片段的时间重叠，给每个 ASR 片段赋说话人标签。"""
+    updated: list[TimedText] = []
+    for cue in cues:
+        best, best_overlap = "", 0.0
+        for start, end, speaker in intervals:
+            overlap = max(0.0, min(cue.end, end) - max(cue.start, start))
+            if overlap > best_overlap:
+                best_overlap, best = overlap, speaker
+        updated.append(TimedText(cue.start, cue.end, cue.text, cue.source, best))
+    return updated
+
+
+def _assign_speakers_by_overlap(diarization, cues: Sequence[TimedText]) -> list[TimedText]:
+    """pyannote 结果（Annotation/DiarizeOutput）→ 按重叠给 ASR 片段赋说话人。"""
+    ann = _diarization_annotation(diarization)
+    intervals = [
+        (turn.start, turn.end, speaker)
+        for turn, _, speaker in ann.itertracks(yield_label=True)
+    ]
+    return _assign_labels_by_overlap(intervals, cues)
+
+
+def _ensure_ffmpeg_shared_dlls() -> None:
+    """Windows 下把 FFmpeg shared DLL 目录加入加载路径，供 torchcodec 解码音轨。
+
+    torchcodec 的 libtorchcodec_core*.dll 依赖 avcodec/avformat 等 DLL，必须能找到
+    FFmpeg shared 版（BtbN/Gyan 的 shared 构建）。static 单文件 ffmpeg.exe 不满足。
+    优先读 .env 的 FFMPEG_SHARED_BIN；否则自动扫描 WinGet 安装目录里的 bin 目录。
+    """
+    if os.name != "nt":
+        return
+
+    def _has_avcodec(d: str) -> bool:
+        try:
+            return any(f.startswith("avcodec-") and f.endswith(".dll") for f in os.listdir(d))
+        except OSError:
+            return False
+
+    candidates: list[str] = []
+    env_bin = os.getenv("FFMPEG_SHARED_BIN", "").strip()
+    if env_bin:
+        candidates.append(env_bin)
+    wg_root = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages")
+    if os.path.isdir(wg_root):
+        for pkg in os.listdir(wg_root):
+            pkg_dir = os.path.join(wg_root, pkg)
+            try:
+                entries = os.listdir(pkg_dir)
+            except OSError:
+                continue
+            for entry in entries:
+                bin_dir = os.path.join(pkg_dir, entry, "bin")
+                if os.path.isdir(bin_dir) and _has_avcodec(bin_dir):
+                    candidates.append(bin_dir)
+    for d in candidates:
+        if d and os.path.isdir(d) and _has_avcodec(d):
+            try:
+                os.add_dll_directory(d)
+            except (AttributeError, OSError):
+                pass
+            cur = os.environ.get("PATH", "")
+            if d not in cur:
+                os.environ["PATH"] = d + os.pathsep + cur
+            return
+
+
+def _diarize_pyannote(
+    media_path: str,
+    cues: Sequence[TimedText],
+) -> tuple[list[TimedText], Optional[str]]:
+    try:
+        # 系统级 HF_ENDPOINT 常指向 hf-mirror.com，它会破坏 huggingface_hub 的
+        # token 认证（表现为 "Invalid user token"），且门控模型授权只在官方判定。
+        # 这里强制走官方端点，避免多人转写下载模型失败。
+        os.environ.pop("HF_ENDPOINT", None)
+        try:
+            import huggingface_hub.constants as _hf_c
+            _hf_c.ENDPOINT = "https://huggingface.co"
+        except Exception:
+            pass
+        _ensure_ffmpeg_shared_dlls()  # torchcodec 需要 FFmpeg shared DLL
+        from pyannote.audio import Pipeline
+    except ImportError:
+        return list(cues), "未安装 pyannote.audio，无法执行多人转写。"
+
+    token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_HUB_TOKEN")
+    if not token:
+        return list(cues), "接入 pyannote 需要 HuggingFace token，请设置环境变量 HF_TOKEN。"
+
+    temp_dir = tempfile.mkdtemp(prefix="pyannote_diar_")
+    try:
+        wav_path = os.path.join(temp_dir, "audio_16k.wav")
+        _extract_16k_wav(media_path, wav_path)
+
+        pipeline = Pipeline.from_pretrained(
+            "pyannote/speaker-diarization-3.1",
+            token=token,
+        )
+        try:
+            import torch
+            if torch.cuda.is_available():
+                pipeline.to(torch.device("cuda"))
+        except Exception:
+            pass  # 显存不足/无 CUDA 时留在 CPU 推理
+
+        diarization = pipeline(wav_path)
+        updated = _assign_speakers_by_overlap(diarization, cues)
+        n_speakers = len({cue.speaker for cue in updated if cue.speaker})
+        if n_speakers >= 2:
+            return updated, f"pyannote 识别到 {n_speakers} 个说话人"
+        return updated, f"pyannote 说话人分离完成（识别到 {n_speakers} 个说话人）"
+    except Exception as exc:
+        return list(cues), f"pyannote 说话人分离失败: {exc}"
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def _extract_16k_mp3(media_path: str, out_path: str) -> None:
+    """抽取 16k 单声道 mp3 音轨（腾讯云极速转写要求）。"""
+    ffmpeg = os.getenv("FFMPEG_PATH", "ffmpeg")
+    result = subprocess.run(
+        [ffmpeg, "-y", "-i", media_path, "-vn", "-ac", "1", "-ar", "16000",
+         "-b:a", "48k", out_path],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0 or not os.path.exists(out_path):
+        raise RuntimeError(f"抽取 16k 音轨失败: {(result.stderr or '')[-300:]}")
+
+
+def _diarize_tencent(
+    media_path: str,
+    cues: Sequence[TimedText],
+) -> tuple[list[TimedText], Optional[str]]:
+    """腾讯云 ASR（录音文件识别极速版）说话人分离后端：走云端 API，无需本地 GPU，免 AppID。"""
+    secret_id = os.getenv("TENCENT_ASR_SECRET_ID", "").strip()
+    secret_key = os.getenv("TENCENT_ASR_SECRET_KEY", "").strip()
+    if not (secret_id and secret_key):
+        return list(cues), (
+            "接入腾讯云说话人分离需配置 TENCENT_ASR_SECRET_ID / TENCENT_ASR_SECRET_KEY"
+            "（腾讯云控制台 → 访问管理 CAM → API 密钥管理 新建）。"
+        )
+
+    from tencent_flash_asr import transcribe_with_speakers
+
+    base = os.getenv("DOMAIN", "").strip() or os.getenv("PUBLIC_BASE_URL", "").strip()
+    if not base:
+        return list(cues), (
+            "腾讯云说话人分离需要公网音频 URL，请在 .env 配置 DOMAIN（或 PUBLIC_BASE_URL）"
+            "为应用可被腾讯访问的地址，例如 http://服务器公网IP:7860"
+        )
+
+    runtime_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "diar")
+    os.makedirs(runtime_dir, exist_ok=True)
+    temp_dir = tempfile.mkdtemp(prefix="tencent_diar_")
+    mp3_path: str | None = None
+    try:
+        mp3_name = f"audio_{int(time.time()*1000)}{random.randint(1000,9999)}.mp3"
+        mp3_path = os.path.join(runtime_dir, mp3_name)
+        _extract_16k_mp3(media_path, mp3_path)
+        public_url = base.rstrip("/") + "/static/diar/" + mp3_name
+        sentences = transcribe_with_speakers(mp3_path, public_url=public_url)
+        intervals = sorted(
+            (
+                s["start"], s["end"], f"SPEAKER_{int(s['speaker_id'])}"
+            )
+            for s in sentences
+            if s.get("speaker_id") is not None and s.get("text")
+        )
+        if not intervals:
+            return list(cues), (
+                "腾讯云 ASR 未返回说话人信息，请确认使用支持说话人分离的中文引擎（16k_zh）。"
+            )
+        assigned = _assign_labels_by_overlap(intervals, cues)
+        n = len({label for _, _, label in intervals})
+        return assigned, f"腾讯云识别到 {n} 个说话人"
+    except Exception as exc:
+        return list(cues), f"腾讯云说话人分离失败: {exc}"
+    finally:
+        if mp3_path and os.path.exists(mp3_path):
+            try:
+                os.remove(mp3_path)
+            except OSError:
+                pass
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def assign_speakers(
+    media_path: str,
+    cues: Sequence[TimedText],
+) -> tuple[list[TimedText], Optional[str]]:
+    """给转写片段打上说话人标签（多人转写）。
+
+    说话人分离后端为插拔式，由 ASR_SPEAKER_BACKEND 指定：
+      - pyannote：本地 diarization（需 HF_TOKEN 访问门控模型，需 GPU/显存）
+      - tencent ：腾讯云录音识别极速版说话人分离（走云端 API，2C2G 也能跑）
+    未配置 / 未实现时返回原样并给出提示。
+    """
+    backend = _speaker_backend()
+    if not backend or backend in {"none", "off", "0"}:
+        return list(cues), (
+            "多人转写已开启，但未配置说话人分离后端（ASR_SPEAKER_BACKEND）。"
+            "暂按单人口播处理。"
+        )
+
+    if backend == "pyannote":
+        return _diarize_pyannote(media_path, cues)
+    if backend == "tencent":
+        return _diarize_tencent(media_path, cues)
+
+    return list(cues), f"未知的说话人分离后端: {backend}"
+
+
+def format_diarized_transcript(cues: Sequence[TimedText], paragraph_chars: int = 420) -> str:
+    """把带说话人标签的转写整理成按说话人分组的可读文本。"""
+    if not cues:
+        return "没有可用的 ASR 逐字稿。"
+    paragraphs: list[str] = []
+    current_label: Optional[str] = None
+    current: list[str] = []
+
+    def flush() -> None:
+        nonlocal current_label, current
+        if current:
+            if current_label:
+                paragraphs.append(f"{current_label}：" + "".join(current))
+            else:
+                paragraphs.append("".join(current))
+            current_label, current = None, []
+
+    for cue in cues:
+        raw = cue.speaker or ""
+        label = None
+        if raw:
+            label = f"Speaker_{raw}" if not raw.startswith("SPEAKER_") else f"Speaker_{raw[len('SPEAKER_'):]}"
+        if label and label != current_label and current:
+            flush()
+        if label:
+            current_label = label
+        current.append(cue.text.strip())
+        if len("".join(current)) >= paragraph_chars:
+            flush()
+    flush()
+
+    return "\n\n".join(paragraphs)
 
 
 def _enter_asr_low_priority() -> Optional[Callable[[], None]]:
@@ -2134,6 +2421,7 @@ def analyze_video_evidence_first(
     custom_focus: Optional[str] = None,
     max_frames: Optional[int] = None,
     progress: ProgressCallback = None,
+    diarize: bool = False,
 ) -> tuple[str, EvidenceBundle]:
     """Run the complete evidence-first analysis and return report + evidence."""
     if not os.path.exists(video_path):
@@ -2170,8 +2458,21 @@ def analyze_video_evidence_first(
             warnings=warnings,
         )
 
+        diarize_on = diarize or _asr_diarize_enabled()
+        if diarize_on and transcript:
+            update(0.30, "多人转写：正在标注说话人")
+            diarized, diarize_warning = assign_speakers(video_path, transcript)
+            bundle.transcript = diarized
+            if diarize_warning:
+                warnings.append(diarize_warning)
+                bundle.warnings = list(warnings)
+
         synthesis_model = os.getenv("SYNTHESIS_MODEL_ID", "").strip() or model
-        if transcript:
+        if diarize_on and transcript:
+            # 多人转写：保留说话人结构，不做会破坏 Speaker 标记的逐行 LLM 重排
+            update(0.34, "多人转写：按说话人整理成稿")
+            bundle.cleaned_transcript = format_diarized_transcript(bundle.transcript)
+        elif transcript:
             update(0.34, "正在独立清洗 ASR 断句、标点与明显识别错误")
             bundle.cleaned_transcript = clean_asr_transcript(
                 client,
