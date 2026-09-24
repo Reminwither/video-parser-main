@@ -125,10 +125,10 @@ def transcribe_with_speakers(audio_path: str, public_url: str | None = None) -> 
     req.SpeakerDiarization = 1
     # 16k 引擎不支持指定说话人人数，保持 SpeakerNumber=0（自动分离）
     if public_url:
-        req.SourceType = 1
+        req.SourceType = 0
         req.Url = public_url
     else:
-        req.SourceType = 0
+        req.SourceType = 1
         with path.open("rb") as audio_file:
             req.Data = base64.b64encode(audio_file.read()).decode("ascii")
 
