@@ -17,12 +17,24 @@ jobs:
           username: root
           port: 22
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script_stop: true # 任意一步失败立即中止，避免半吊子状态
+          command_timeout: 20m
+          envs: APP_PASS
+          # 通过环境变量传入密码，避免把密码拼进远程 shell 脚本。
           script: |
             set -e
+            test -n "$APP_PASS" || { echo "APP_PASS secret is required"; exit 1; }
             echo "==> [1/4] 拉取最新代码"
             cd /opt/video-parser
-            git fetch origin ${{ github.ref_name }}
+            for attempt in 1 2 3 4 5; do
+              if git fetch origin ${{ github.ref_name }}; then
+                break
+              fi
+              if [ "$attempt" -eq 5 ]; then
+                echo "git fetch failed after 5 attempts"
+                exit 1
+              fi
+              sleep 5
+            done
             git reset --hard FETCH_HEAD
 
             echo "==> [2/4] 用国内镜像重新构建镜像"
@@ -40,10 +52,27 @@ jobs:
               -p 7860:7860 \
               --env-file /opt/video-parser/.env \
               -e APP_USER=admin \
-              -e APP_PASS=${{ secrets.APP_PASS }} \
+              -e APP_PASS \
+              -e REQUIRE_AUTH=1 \
               -v /opt/video-parser/downloads:/app/downloads \
               -v /opt/video-parser/cache:/app/cache \
               -v /opt/video-parser/logs:/app/logs \
               video-parser:latest
 
+            for attempt in 1 2 3 4 5; do
+              if curl -fsS http://127.0.0.1:7860/health >/dev/null; then
+                break
+              fi
+              if [ "$attempt" -eq 5 ]; then
+                echo "Health check failed"
+                exit 1
+              fi
+              sleep 5
+            done
+            test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7860/)" = "401" || {
+              echo "Anonymous access is not blocked"
+              exit 1
+            }
             echo "==> DEPLOY DONE $(date)"
+        env:
+          APP_PASS: ${{ secrets.APP_PASS }}

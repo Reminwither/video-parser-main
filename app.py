@@ -1257,6 +1257,8 @@ if __name__ == "__main__":
     # 访问鉴权：若服务器 .env 配置了 APP_PASS，则启用 Basic Auth（账号密码从环境变量读）
     _app_user = os.getenv("APP_USER", "admin")
     _app_pass = os.getenv("APP_PASS", "")
+    if os.getenv("REQUIRE_AUTH") == "1" and not _app_pass:
+        raise RuntimeError("REQUIRE_AUTH=1 requires APP_PASS")
     if _app_pass:
         combined_app = BasicAuthMiddleware(combined_app, _app_user, _app_pass)
         print("已启用 Basic Auth 访问鉴权")
