@@ -136,10 +136,15 @@ def transcribe_with_speakers(audio_path: str, public_url: str | None = None) -> 
     task_id = resp.Data.TaskId
 
     deadline = time.time() + int(os.getenv("TENCENT_ASR_POLL_SECONDS", "300"))
+    gr = None
     while True:
+        if time.time() > deadline:
+            raise RuntimeError("腾讯云 ASR 轮询超时，请稍后重试。")
         try:
-            gr = client.GetRecTaskResult(models.GetRecTaskResultRequest(TaskId=task_id))
-        except Exception:  # noqa: BLE001 瞬时网络抖动重试
+            q = models.DescribeTaskStatusRequest()
+            q.TaskId = task_id
+            gr = client.DescribeTaskStatus(q)
+        except Exception:  # noqa: BLE001 瞬时网络抖动重试，但不跳过超时判断
             time.sleep(1.0)
             continue
         status = gr.Data.Status
@@ -147,8 +152,6 @@ def transcribe_with_speakers(audio_path: str, public_url: str | None = None) -> 
             break
         if status == 3:
             raise RuntimeError(f"腾讯云 ASR 识别失败: {gr.Data.ErrorMsg or '未知错误'}")
-        if time.time() > deadline:
-            raise RuntimeError("腾讯云 ASR 轮询超时，请稍后重试。")
         time.sleep(1.5)
 
     result = gr.Data.Result
