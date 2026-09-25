@@ -80,10 +80,12 @@ jobs:
               fi
               sleep 5
             done
-            test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7860/)" = "401" || {
-              echo "Anonymous access is not blocked"
+            # 会话登录模块：匿名访问应 302 跳登录页（兼容旧 Basic Auth 的 401）
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7860/)
+            if [ "$CODE" != "302" ] && [ "$CODE" != "401" ]; then
+              echo "Anonymous access is not blocked (got $CODE)"
               exit 1
-            }
+            fi
             echo "==> DEPLOY DONE $(date)"
         env:
           APP_PASS: ${{ secrets.APP_PASS }}
