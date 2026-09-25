@@ -64,6 +64,15 @@ body, .gradio-container {
   background: var(--vp-bg) !important;
 }
 
+/* Gradio 6 宿主元素 <gradio-app> 是全宽块级、自带 background:
+   var(--body-background-fill)（OS 浅色= #fafaf9，OS 深色= #0f0f11），
+   且包在 .gradio-container 外面 —— 不压掉它，站内深色时两侧边距会
+   显示 Gradio 的浅色底（画布透出宿主而非 body）。统一透明化，
+   让 body 的 var(--vp-bg) 决定一切。 */
+gradio-app {
+  background: transparent !important;
+}
+
 /* 响应式容器：1200 居中限宽（与 TikHub 对齐） */
 .gradio-container {
   width: 100% !important;
