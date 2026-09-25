@@ -20,6 +20,8 @@ from urllib.parse import urlparse, parse_qs, urlencode
 from openai import OpenAI
 from dotenv import load_dotenv
 from api import app as api_app, parse_video as api_parse_video, download_video as api_download_video, ParseRequest, DownloadRequest
+import auth_db
+from auth_middleware import SessionAuthMiddleware
 from video_analysis import analyze_video_evidence_first
 
 # 加载环境变量
@@ -784,7 +786,36 @@ THEME_SCRIPT = """
     if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   }
   function vpLogin() {
-    alert('账号登录功能即将上线，敬请期待');
+    location.href = '/login';
+  }
+  // 会话用户态：登录后把「登录」链接替换为「用户名 · 退出」
+  function vpInitAuthUI() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/api/auth/me', true);
+    xhr.onload = function () {
+      if (xhr.status !== 200) return;
+      try {
+        var d = JSON.parse(xhr.responseText);
+        var name = d && d.data && d.data.username;
+        if (!name) return;
+        var link = document.querySelector('.vp-login-link');
+        if (link) {
+          link.removeAttribute('onclick');
+          link.setAttribute('href', '/account');
+          link.innerHTML = '<span class="vp-user-dot"></span>' + name.replace(/[<>&]/g, '');
+        }
+        var cta = document.querySelector('.vp-nav-right');
+        if (cta && !document.getElementById('vp-logout-link')) {
+          var out = document.createElement('a');
+          out.id = 'vp-logout-link';
+          out.className = 'vp-login-link';
+          out.href = '/logout';
+          out.textContent = '退出';
+          cta.insertBefore(out, cta.querySelector('.vp-cta-pill'));
+        }
+      } catch (e) {}
+    };
+    xhr.send();
   }
   function vpSyncLabel() {
     var lbl = document.querySelector('.vp-theme-label');
@@ -797,7 +828,9 @@ THEME_SCRIPT = """
   window.vpLogin = vpLogin;
   window.vpScrollTo = vpScrollTo;
   window.addEventListener('load', vpSyncLabel);
+  window.addEventListener('load', vpInitAuthUI);
   setTimeout(vpSyncLabel, 600);
+  setTimeout(vpInitAuthUI, 400);
 
   // TikHub 式导航：透明起始，滚动 >8px 后加毛玻璃底 + 细边框（CSS .vp-nav-scrolled）
   var _nav = null;
@@ -984,7 +1017,7 @@ def create_app():
                     <svg class="vp-icon-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
                     <svg class="vp-icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/></svg>
                   </button>
-                  <a class="vp-login-link" href="javascript:void(0)" onclick="vpLogin()">
+                  <a class="vp-login-link" id="vp-login-link" href="/login">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg>
                     登录
                   </a>
@@ -1410,7 +1443,7 @@ if __name__ == "__main__":
     # 样式经 <link> 注入 <head>（static/css/app.css，改 CSS 无需重启服务），
     # 主题脚本内联注入，head 解析期间同步应用主题，杜绝闪屏与布局抖动。
     # ?v= 版本号防缓存：CSS 迭代后强制浏览器拉新（否则旧样式会残留在用户端）
-    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260925c">\n' + THEME_SCRIPT
+    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260925d">\n' + THEME_SCRIPT
     try:
         combined_app = gr.mount_gradio_app(
             api_app, app, path="/",
@@ -1421,11 +1454,13 @@ if __name__ == "__main__":
         app.theme = _theme
         combined_app = gr.mount_gradio_app(api_app, app, path="/")
 
-    # 访问鉴权：若服务器 .env 配置了 APP_PASS，则启用 Basic Auth（账号密码从环境变量读）
-    _app_user = os.getenv("APP_USER", "admin")
-    _app_pass = os.getenv("APP_PASS", "")
-    if os.getenv("REQUIRE_AUTH") == "1" and not _app_pass:
-        raise RuntimeError("REQUIRE_AUTH=1 requires APP_PASS")
+    # 访问鉴权：SQLite 数据库 + 会话 Cookie（auth_db / auth_middleware）。
+    # REQUIRE_AUTH=1 启用；首次启动空库时以 APP_USER / APP_PASS 播种初始管理员，
+    # 之后凭据以数据库为准（可在 /register 注册、/account 改密）。
+    # 兼容旧部署：REQUIRE_AUTH 未配置但设置了 APP_PASS 时也启用。
+    _auth_on = os.getenv("REQUIRE_AUTH") == "1" or bool(os.getenv("APP_PASS", ""))
+    if _auth_on:
+        auth_db.init_db()
 
     # 缓存策略：页面/API no-store；前端资源 no-cache 回源校验（防"刷新就变"与损坏缓存）
     combined_app = NoCacheMiddleware(combined_app)
@@ -1433,11 +1468,12 @@ if __name__ == "__main__":
     # 资源缓存键升级：/v2/ 前缀绕开损坏的磁盘缓存条目（ERR_CACHE_READ_FAILURE 自愈）
     combined_app = VersionedAssetsMiddleware(combined_app)
 
-    if _app_pass:
-        combined_app = BasicAuthMiddleware(combined_app, _app_user, _app_pass)
-        print("已启用 Basic Auth 访问鉴权")
+    if _auth_on:
+        # 会话鉴权放最外层：未登录一律挡在缓存/改写逻辑之前
+        combined_app = SessionAuthMiddleware(combined_app)
+        print("已启用会话登录鉴权（SQLite）")
     else:
-        print("警告：未配置 APP_PASS，工作台将无访问鉴权，请尽快在 .env 配置")
+        print("警告：未启用访问鉴权（REQUIRE_AUTH=1 或 APP_PASS 均未配置）")
 
     import uvicorn
     print("正在启动服务，请访问 http://localhost:7860")

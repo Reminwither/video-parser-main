@@ -91,3 +91,6 @@ band_*.png
 guide_*.png
 h_*.png
 sec_*.png
+
+# 用户数据库（部署服务器经 data/ 卷持久化，不入库）
+data/

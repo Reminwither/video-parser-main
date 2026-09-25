@@ -154,6 +154,177 @@ async def vite_client_stub():
     return Response(content="", media_type="application/javascript")
 
 
+# ==================== 用户认证（数据库 + 会话） ====================
+# 页面：/login /register /account；JSON：/api/auth/me /api/auth/change-password
+# 中间件（auth_middleware.SessionAuthMiddleware）在 ASGI 层强制登录，
+# 通过校验的请求会在 scope.state.user 带上用户信息。
+
+import auth_db
+import auth_pages
+from fastapi.responses import HTMLResponse, RedirectResponse
+
+
+def _allow_register() -> bool:
+    return os.getenv("ALLOW_REGISTER", "1") != "0"
+
+
+def _safe_next(next_url: str) -> str:
+    """只允许站内相对路径，防开放重定向。"""
+    if next_url and next_url.startswith("/") and not next_url.startswith("//"):
+        return next_url
+    return "/"
+
+
+def _current_user(request: Request) -> Optional[dict]:
+    return getattr(request.scope.get("state", None), "user", None) or \
+        (request.scope.get("state") or {}).get("user")
+
+
+@app.get("/login")
+async def login_page(request: Request, next: str = "/"):
+    return HTMLResponse(auth_pages.login_page(_safe_next(next), allow_register=_allow_register()))
+
+
+@app.post("/login")
+async def login_submit(request: Request):
+    form = await request.form()
+    username = str(form.get("username", "")).strip()
+    password = str(form.get("password", ""))
+    next_url = _safe_next(str(form.get("next", "/")))
+    ip = request.client.host if request.client else "-"
+
+    def fail(err: str, status: int = 200):
+        return HTMLResponse(
+            auth_pages.login_page(next_url, error=err, allow_register=_allow_register()),
+            status_code=status,
+        )
+
+    if not username or not password:
+        return fail("请输入用户名和密码")
+
+    try:
+        auth_db.check_login_allowed(username, ip)
+    except auth_db.AuthError as e:
+        return fail(str(e))
+
+    user = auth_db.get_user_by_username(username)
+    if not user or not user["is_active"] or not auth_db.verify_password(password, user["password_hash"]):
+        auth_db.record_login_failure(username, ip)
+        logger.warning(f"登录失败: {username} from {ip}")
+        return fail("用户名或密码不正确")
+
+    auth_db.record_login_success(username, ip)
+    with auth_db._DB_LOCK:
+        auth_db._db().execute(
+            "UPDATE users SET last_login_at = ? WHERE id = ?",
+            (auth_db._now_iso(), user["id"]),
+        )
+        auth_db._db().commit()
+
+    token = auth_db.create_session(
+        user["id"], ip=ip, user_agent=request.headers.get("user-agent", "")
+    )
+    resp = RedirectResponse(next_url, status_code=303)
+    resp.set_cookie(value=token, **auth_db.session_cookie_kwargs())
+    logger.info(f"登录成功: {username} from {ip}")
+    return resp
+
+
+@app.get("/register")
+async def register_page(request: Request, next: str = "/"):
+    if not _allow_register():
+        return RedirectResponse("/login", status_code=302)
+    return HTMLResponse(auth_pages.register_page(_safe_next(next)))
+
+
+@app.post("/register")
+async def register_submit(request: Request):
+    if not _allow_register():
+        return RedirectResponse("/login", status_code=302)
+    form = await request.form()
+    username = str(form.get("username", "")).strip()
+    password = str(form.get("password", ""))
+    password2 = str(form.get("password2", ""))
+    next_url = _safe_next(str(form.get("next", "/")))
+
+    def fail(err: str):
+        return HTMLResponse(auth_pages.register_page(next_url, error=err))
+
+    if password != password2:
+        return fail("两次输入的密码不一致")
+    try:
+        user_id = auth_db.create_user(username, password)
+    except auth_db.AuthError as e:
+        return fail(str(e))
+
+    logger.info(f"注册成功: {username}")
+    token = auth_db.create_session(
+        user_id, ip=request.client.host if request.client else "-",
+        user_agent=request.headers.get("user-agent", ""),
+    )
+    resp = RedirectResponse(next_url, status_code=303)
+    resp.set_cookie(value=token, **auth_db.session_cookie_kwargs())
+    return resp
+
+
+@app.get("/logout")
+async def logout(request: Request):
+    cookie = request.cookies.get(auth_db.SESSION_COOKIE, "")
+    auth_db.delete_session(cookie)
+    resp = RedirectResponse("/login", status_code=302)
+    resp.delete_cookie(auth_db.SESSION_COOKIE, path="/")
+    return resp
+
+
+@app.get("/account")
+async def account_page_view(request: Request):
+    user = _current_user(request)
+    if not user:
+        return RedirectResponse("/login?next=/account", status_code=302)
+    fresh = auth_db.get_user_by_id(user["id"]) or user
+    with auth_db._DB_LOCK:
+        n = auth_db._db().execute(
+            "SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND expires_at > ?",
+            (user["id"], auth_db._now()),
+        ).fetchone()["n"]
+    return HTMLResponse(auth_pages.account_page(fresh, sessions_active=n))
+
+
+@app.post("/account/password")
+async def change_password_submit(request: Request):
+    user = _current_user(request)
+    if not user:
+        return RedirectResponse("/login?next=/account", status_code=302)
+    form = await request.form()
+    old_password = str(form.get("old_password", ""))
+    new_password = str(form.get("new_password", ""))
+    try:
+        auth_db.change_password(user["id"], old_password, new_password)
+    except auth_db.AuthError as e:
+        fresh = auth_db.get_user_by_id(user["id"]) or user
+        return HTMLResponse(auth_pages.account_page(fresh, error=str(e)))
+    logger.info(f"密码已修改并吊销全部会话: {user['username']}")
+    # change_password 已吊销全部会话，回登录页重新登录
+    resp = RedirectResponse("/login", status_code=303)
+    resp.delete_cookie(auth_db.SESSION_COOKIE, path="/")
+    return resp
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    user = _current_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"retcode": 401, "succ": False})
+    return {
+        "retcode": 0,
+        "succ": True,
+        "data": {
+            "username": user["username"],
+            "is_admin": bool(user.get("is_admin")),
+        },
+    }
+
+
 # ==================== API 路由 ====================
 
 @app.get("/health")

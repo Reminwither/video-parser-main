@@ -195,6 +195,13 @@ html[data-theme="dark"] .vp-theme-round .vp-icon-moon { display: none !important
 }
 .vp-login-link:hover { color: var(--vp-text); }
 
+/* 会话用户态：登录后 header 显示「用户名 · 退出」 */
+.vp-user-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 999px;
+  background: var(--vp-ok); margin-right: 6px; vertical-align: 1px;
+}
+.vp-login-link .vp-user-dot { flex: 0 0 7px; }
+
 /* 开始使用：34px 全圆角 pill，bg-foreground / text-background，hover 85% 透明度 + 微阴影 */
 .vp-cta-pill {
   display: inline-flex; align-items: center; justify-content: center;

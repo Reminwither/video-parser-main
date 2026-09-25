@@ -67,6 +67,7 @@ jobs:
               -v /opt/video-parser/downloads:/app/downloads \
               -v /opt/video-parser/cache:/app/cache \
               -v /opt/video-parser/logs:/app/logs \
+              -v /opt/video-parser/data:/app/data \
               video-parser:latest
 
             for attempt in 1 2 3 4 5; do
