@@ -325,6 +325,55 @@ async def auth_me(request: Request):
     }
 
 
+@app.post("/api/auth/login")
+async def api_login(request: Request):
+    """JSON 登录（供前端登录弹窗 fetch 调用），成功后 Set-Cookie。"""
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400,
+                            content={"retcode": 400, "succ": False, "retdesc": "请求格式错误"})
+    username = str((data or {}).get("username", "")).strip()
+    password = str((data or {}).get("password", ""))
+    ip = request.client.host if request.client else "-"
+
+    if not username or not password:
+        return JSONResponse(status_code=400,
+                            content={"retcode": 400, "succ": False, "retdesc": "请输入用户名和密码"})
+
+    try:
+        auth_db.check_login_allowed(username, ip)
+    except auth_db.AuthError as e:
+        return JSONResponse(status_code=429,
+                            content={"retcode": 429, "succ": False, "retdesc": str(e)})
+
+    user = auth_db.get_user_by_username(username)
+    if not user or not user["is_active"] or not auth_db.verify_password(password, user["password_hash"]):
+        auth_db.record_login_failure(username, ip)
+        logger.warning(f"JSON 登录失败: {username} from {ip}")
+        return JSONResponse(status_code=401,
+                            content={"retcode": 401, "succ": False, "retdesc": "用户名或密码不正确"})
+
+    auth_db.record_login_success(username, ip)
+    with auth_db._DB_LOCK:
+        auth_db._db().execute(
+            "UPDATE users SET last_login_at = ? WHERE id = ?",
+            (auth_db._now_iso(), user["id"]),
+        )
+        auth_db._db().commit()
+
+    token = auth_db.create_session(
+        user["id"], ip=ip, user_agent=request.headers.get("user-agent", "")
+    )
+    resp = JSONResponse(content={
+        "retcode": 0, "succ": True,
+        "data": {"username": user["username"], "is_admin": bool(user.get("is_admin"))},
+    })
+    resp.set_cookie(value=token, **auth_db.session_cookie_kwargs())
+    logger.info(f"JSON 登录成功: {username} from {ip}")
+    return resp
+
+
 # ==================== API 路由 ====================
 
 @app.get("/health")

@@ -560,13 +560,15 @@ async def _async_play_video(progress) -> Tuple[str, str]:
             return None, f"加载失败: {str(e)}"
 
 
-def download_video(progress=gr.Progress()) -> Tuple[str, str]:
+def download_video(gate, progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str]:
     """
     下载视频
 
     Returns:
         (file_update, status_message)
     """
+    if gate == "__VP_CANCEL__" or not _vp_session_from_request(request):
+        return gr.update(visible=False), "🔒 请先登录后再使用此功能"
     import asyncio
     filepath, status = asyncio.run(_async_download_video(progress))
     if filepath:
@@ -827,6 +829,64 @@ THEME_SCRIPT = """
   window.vpToggleTheme = vpToggleTheme;
   window.vpLogin = vpLogin;
   window.vpScrollTo = vpScrollTo;
+  window.__vp_logged_in = false;
+  window.vpOpenLoginModal = function () {
+    var m = document.getElementById('vp-login-modal');
+    if (m) { m.style.display = 'flex'; var p = document.getElementById('vp-modal-pass'); if (p) p.focus(); }
+  };
+  window.vpCloseLoginModal = function () {
+    var m = document.getElementById('vp-login-modal');
+    if (m) m.style.display = 'none';
+    var msg = document.getElementById('vp-modal-msg');
+    if (msg) { msg.textContent = ''; msg.className = 'vp-modal-msg'; }
+  };
+  window.vpSubmitLogin = function () {
+    var u = (document.getElementById('vp-modal-user') || {}).value || '';
+    u = u.trim();
+    var p = (document.getElementById('vp-modal-pass') || {}).value || '';
+    var msg = document.getElementById('vp-modal-msg');
+    var btn = document.getElementById('vp-modal-submit');
+    if (!u || !p) { if (msg) { msg.textContent = '请输入用户名和密码'; msg.className = 'vp-modal-msg err'; } return; }
+    if (btn) { btn.disabled = true; btn.textContent = '登录中…'; }
+    fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ username: u, password: p })
+    }).then(function (r) {
+      return r.json().then(function (d) { return { ok: (r.ok && d.succ), d: d }; });
+    }).then(function (o) {
+      if (btn) { btn.disabled = false; btn.textContent = '登 录'; }
+      if (o.ok) {
+        window.__vp_logged_in = true;
+        var link = document.querySelector('.vp-login-link');
+        if (link && o.d.data) {
+          link.removeAttribute('onclick');
+          link.setAttribute('href', '/account');
+          link.innerHTML = '<span class="vp-user-dot"></span>' + String(o.d.data.username).replace(/[<>&]/g, '');
+        }
+        window.vpCloseLoginModal();
+      } else if (msg) {
+        msg.textContent = (o.d && o.d.retdesc) ? o.d.retdesc : '登录失败';
+        msg.className = 'vp-modal-msg err';
+      }
+    }).catch(function () {
+      if (btn) { btn.disabled = false; btn.textContent = '登 录'; }
+      if (msg) { msg.textContent = '网络错误，请重试'; msg.className = 'vp-modal-msg err'; }
+    });
+  };
+  window.addEventListener('load', function () {
+    var close = document.getElementById('vp-modal-close');
+    if (close) close.onclick = window.vpCloseLoginModal;
+    var mask = document.getElementById('vp-login-modal');
+    if (mask) mask.onclick = function (e) { if (e.target === mask) window.vpCloseLoginModal(); };
+    var submit = document.getElementById('vp-modal-submit');
+    if (submit) submit.onclick = window.vpSubmitLogin;
+    var pass = document.getElementById('vp-modal-pass');
+    if (pass) pass.addEventListener('keydown', function (e) { if (e.key === 'Enter') window.vpSubmitLogin(); });
+    var user = document.getElementById('vp-modal-user');
+    if (user) user.addEventListener('keydown', function (e) { if (e.key === 'Enter') window.vpSubmitLogin(); });
+  });
   window.addEventListener('load', vpSyncLabel);
   window.addEventListener('load', vpInitAuthUI);
   setTimeout(vpSyncLabel, 600);
@@ -1196,6 +1256,7 @@ def create_app():
 
         play_btn.click(
             fn=play_video,
+            js=GATE_JS,
             inputs=[],
             outputs=[video_output, status_output]
         )
@@ -1443,7 +1504,7 @@ if __name__ == "__main__":
     # 样式经 <link> 注入 <head>（static/css/app.css，改 CSS 无需重启服务），
     # 主题脚本内联注入，head 解析期间同步应用主题，杜绝闪屏与布局抖动。
     # ?v= 版本号防缓存：CSS 迭代后强制浏览器拉新（否则旧样式会残留在用户端）
-    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260925d">\n' + THEME_SCRIPT
+    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260926a">\n' + THEME_SCRIPT
     try:
         combined_app = gr.mount_gradio_app(
             api_app, app, path="/",

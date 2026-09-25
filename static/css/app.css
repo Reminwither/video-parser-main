@@ -795,4 +795,65 @@ html body .gradio-container .vp-brand-name { color: var(--vp-text) !important; }
 html body .gradio-container .vp-nav-links a { color: var(--vp-text-sub) !important; }
 html body .gradio-container .vp-nav-links a:hover { color: var(--vp-text) !important; }
 html body .gradio-container .vp-login-link { color: var(--vp-text-sub) !important; }
+
+/* ---------- 登录弹窗（访客可浏览，使用功能才弹窗） ---------- */
+html body .gradio-container .vp-modal-mask {
+  position: fixed; inset: 0; z-index: 9999;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(10, 10, 12, 0.55);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+  padding: 16px;
+}
+html body .gradio-container .vp-modal-card {
+  width: 100%; max-width: 380px;
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-card);
+  padding: 32px 28px 28px;
+  box-shadow: var(--vp-shadow-2);
+  position: relative; color: var(--vp-text);
+}
+html body .gradio-container .vp-modal-x {
+  position: absolute; top: 12px; right: 12px;
+  width: 30px; height: 30px; border-radius: 999px;
+  border: 1px solid var(--vp-border-strong); background: transparent;
+  color: var(--vp-text-sub); cursor: pointer; font-size: 16px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+html body .gradio-container .vp-modal-x:hover { color: var(--vp-text); border-color: var(--vp-text-sub); }
+html body .gradio-container .vp-modal-brand {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  margin-bottom: 22px; font-weight: 700; font-size: 18px; color: var(--vp-text);
+}
+html body .gradio-container .vp-modal-logo {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--vp-accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800;
+}
+html body .gradio-container .vp-modal-title { text-align: center; font-size: 18px; margin-bottom: 4px; letter-spacing: -0.01em; }
+html body .gradio-container .vp-modal-sub { text-align: center; color: var(--vp-text-sub); font-size: 12px; margin-bottom: 20px; }
+html body .gradio-container .vp-modal-input {
+  width: 100%; padding: 10px 12px; margin-top: 10px;
+  border: 1px solid var(--vp-border-strong); border-radius: var(--vp-radius-input);
+  background: var(--vp-bg); color: var(--vp-text); font-size: 14px; outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+html body .gradio-container .vp-modal-input:focus {
+  border-color: var(--vp-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vp-accent) 22%, transparent);
+}
+html body .gradio-container .vp-modal-btn {
+  width: 100%; margin-top: 18px; padding: 11px 0;
+  border: none; border-radius: var(--vp-radius-btn);
+  background: var(--vp-fg); color: var(--vp-invert);
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: background .15s ease;
+}
+html body .gradio-container .vp-modal-btn:hover { background: var(--vp-fg-hover); }
+html body .gradio-container .vp-modal-btn:disabled { opacity: .6; cursor: not-allowed; }
+html body .gradio-container .vp-modal-msg { display: none; margin-top: 12px; padding: 9px 11px; border-radius: 10px; font-size: 12px; line-height: 1.5; }
+html body .gradio-container .vp-modal-msg.err { display: block; background: color-mix(in srgb, var(--vp-err) 10%, transparent); color: var(--vp-err); }
+html body .gradio-container .vp-modal-foot { text-align: center; margin-top: 16px; font-size: 12px; color: var(--vp-text-sub); }
+html body .gradio-container .vp-modal-foot a { color: var(--vp-accent); text-decoration: none; font-weight: 600; }
+html body .gradio-container .vp-modal-foot a:hover { text-decoration: underline; }
 html body .gradio-container .vp-login-link:hover { color: var(--vp-text) !important; }
