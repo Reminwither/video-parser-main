@@ -1,0 +1,782 @@
+/* ============================================================
+   VidAI Design System — TikHub 风格（浅色默认）
+   视觉方向：对齐 tikhub.io —— 克制、黑白灰、暖白底、留白取胜
+   主色 = 近黑 #1a1a1a（无彩色渐变光晕），次级灰 #6b7280
+   默认浅色；深色由 html[data-theme="dark"] 覆盖反转
+   ============================================================ */
+
+:root {
+  --vp-bg: #fafaf9;
+  --vp-surface: #ffffff;          /* 卡片底 */
+  --vp-surface-2: #f4f4f5;        /* hover 底 */
+  --vp-border: #e5e5e3;           /* TikHub --border */
+  --vp-border-strong: #d4d4d8;
+  --vp-text: #1a1a1a;             /* TikHub --foreground */
+  --vp-text-sub: #6b7280;         /* TikHub --muted */
+  --vp-text-mute: #9ca3af;
+  --vp-fg: #1a1a1a;               /* 实心按钮底（TikHub bg-foreground） */
+  --vp-fg-hover: #2d2d30;
+  --vp-invert: #fafaf9;           /* 实心底上的反色文字（TikHub text-background） */
+  --vp-accent: #6366f1;           /* TikHub 品牌强调色 indigo */
+  --vp-accent-hover: #4f46e5;
+  --vp-accent-light: #eef2ff;
+  --vp-ring: rgba(26, 26, 26, 0.10);
+  --vp-ok: #16a34a;
+  --vp-err: #dc2626;
+  --vp-radius-card: 16px;
+  --vp-radius-panel: 12px;
+  --vp-radius-btn: 10px;
+  --vp-radius-input: 10px;
+  --vp-shadow-1: 0 1px 2px rgba(26, 26, 26, 0.04);
+  --vp-shadow-2: 0 8px 24px rgba(26, 26, 26, 0.06);
+  --vp-container: 1200px;
+  --vp-nav-bg: rgba(250, 250, 249, 0.72);
+}
+
+html[data-theme="dark"] {
+  --vp-bg: #0c0c10;
+  --vp-surface: #17171d;
+  --vp-surface-2: #1e1e26;
+  --vp-border: #26262e;
+  --vp-border-strong: #3f3f46;
+  --vp-text: #f2f2f0;
+  --vp-text-sub: #9ca3af;
+  --vp-text-mute: #71717a;
+  --vp-fg: #f2f2f0;
+  --vp-fg-hover: #e4e4e7;
+  --vp-invert: #0c0c10;
+  --vp-accent: #818cf8;
+  --vp-accent-hover: #a5b4fc;
+  --vp-accent-light: #1e1b4b;
+  --vp-ring: rgba(242, 242, 240, 0.16);
+  --vp-ok: #4ade80;
+  --vp-err: #f87171;
+  --vp-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --vp-shadow-2: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --vp-nav-bg: rgba(12, 12, 16, 0.72);
+}
+
+/* ---------- 画布：纯暖白/纯黑底，无渐变无光晕 ---------- */
+html { color-scheme: light; }
+html[data-theme="dark"] { color-scheme: dark; }
+
+body, .gradio-container {
+  background: var(--vp-bg) !important;
+}
+
+/* 响应式容器：1200 居中限宽（与 TikHub 对齐） */
+.gradio-container {
+  width: 100% !important;
+  max-width: var(--vp-container) !important;
+  margin: 0 auto !important;
+  padding-left: 24px !important;
+  padding-right: 24px !important;
+}
+@media (max-width: 1080px) {
+  .gradio-container { padding-left: 16px !important; padding-right: 16px !important; }
+}
+@media (max-width: 640px) {
+  .gradio-container { padding-left: 12px !important; padding-right: 12px !important; }
+}
+
+/* ---------- 清理平台痕迹 ---------- */
+footer, .gradio-footer, [data-testid="footer"] { display: none !important; }
+.record, .record-btn, [data-testid="record-btn"] { display: none !important; }
+
+/* ---------- 字体：Geist Sans 优先 + 中文字体回退 ---------- */
+body, .gradio-container, button, input, textarea, select,
+.vp-report, .vp-report * {
+  font-family: "Geist Sans", "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+               system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+code, pre, .vp-section-num, .vp-help-step {
+  font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+}
+
+/* ---------- 选中与滚动条 ---------- */
+::selection { background: rgba(26, 26, 26, 0.14); }
+html[data-theme="dark"] ::selection { background: rgba(250, 250, 249, 0.22); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 8px; border: 2px solid #fafaf9; }
+::-webkit-scrollbar-thumb:hover { background: #b9b9c1; }
+::-webkit-scrollbar-track { background: transparent; }
+html[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #3f3f46; border-color: #0c0c10; }
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+
+/* ---------- 过渡（克制：仅颜色/边框/阴影微过渡） ---------- */
+.gradio-container, .gradio-container * {
+  transition: background-color .15s ease, border-color .15s ease,
+              color .15s ease, box-shadow .18s ease, opacity .15s ease;
+}
+
+/* ============ 顶部导航（照抄 TikHub：透明起始，滚动后毛玻璃 + 细边框） ============ */
+.vp-nav {
+  position: sticky; top: 0; z-index: 60;
+  margin: 0 -24px; padding: 0 24px;
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  transition: background-color .3s ease, border-color .3s ease;
+}
+.vp-nav.vp-nav-scrolled {
+  background: var(--vp-nav-bg);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4);
+  border-bottom-color: var(--vp-border);
+}
+.vp-nav-inner {
+  max-width: var(--vp-container); margin: 0 auto;
+  height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+@media (max-width: 640px) { .vp-nav { margin: 0 -12px; padding: 0 12px; } }
+
+.vp-nav-left { display: flex; align-items: center; }
+/* text-decoration 需 !important：Gradio 的 `.gradio-container a` 比单类选择器更高，
+   否则品牌名与登录链接会被强制加上下划线 */
+.vp-brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none !important; }
+.vp-nav-logo {
+  width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+  background: var(--vp-accent);     /* 品牌靛蓝，深浅主题恒定，不反色 */
+  display: flex; align-items: center; justify-content: center;
+}
+.vp-nav-logo svg { width: 15px; height: 15px; display: block; fill: #ffffff; }
+.vp-nav-logo svg path { fill: #ffffff !important; }
+.vp-brand-name { font-size: 17px; font-weight: 600; color: var(--vp-text); letter-spacing: -0.025em; }
+
+/* 中部链接：text-sm 常规字重、gap 4px、px-3 py-2、rounded-lg，hover 仅变色 */
+.vp-nav-links { display: flex; align-items: center; gap: 4px; }
+.vp-nav-links a {
+  font-size: 14px; font-weight: 400; color: var(--vp-text-sub);
+  padding: 8px 12px; border-radius: 8px; text-decoration: none !important;
+  transition: color .15s ease;
+}
+.vp-nav-links a:hover { color: var(--vp-text); }
+
+/* 右侧按钮组（TikHub gap-3 = 12px） */
+.vp-nav-right { display: flex; align-items: center; gap: 12px; }
+
+/* 主题钮：32px 圆形，圆环 + 图标走变量（浅深两态都清晰）
+   ⚠ 坑：Gradio 全局 button 重置会清掉 border-width、并把 padding 设为 8px 16px。
+   本按钮是固定 32px 宽，内容盒被压成 0 宽 → 描边与内部 SVG 全都不会绘制（肉眼等于按钮消失）。
+   因此：圆环改用 outline（Gradio 不抢占该属性，且现代浏览器 outline 跟随 border-radius 成圆），
+   图标用 flex:0 0 15px 锁死尺寸防止被 flex 压缩。 */
+.vp-theme-round {
+  width: 32px; height: 32px; border-radius: 999px !important; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent !important;
+  border: none;
+  outline: 1px solid var(--vp-border-strong); outline-offset: -1px;
+  overflow: visible !important;
+  color: var(--vp-text); cursor: pointer; font-family: inherit;
+  transition: outline-color .15s ease, background-color .15s ease;
+}
+.vp-theme-round:hover { background: var(--vp-surface-2) !important; outline-color: var(--vp-text); }
+.vp-theme-round:focus-visible { outline: 2px solid var(--vp-accent); outline-offset: -2px; }
+.vp-theme-round svg { width: 15px !important; height: 15px !important; flex: 0 0 15px !important; }
+/* 浅色显示月亮（点击切深色）；深色显示太阳（点击切浅色），对齐 TikHub 交互语义。
+   需更高优先级 + !important：Gradio 的 svg display 规则会盖掉单纯类选择器 */
+.vp-theme-round .vp-icon-moon { display: block !important; }
+.vp-theme-round .vp-icon-sun { display: none !important; }
+html[data-theme="dark"] .vp-theme-round .vp-icon-sun { display: block !important; }
+html[data-theme="dark"] .vp-theme-round .vp-icon-moon { display: none !important; }
+
+/* 登录：文字 + 入场箭头图标（TikHub log-in 图标样式） */
+.vp-login-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 14px; color: var(--vp-text-sub); text-decoration: none !important;
+  padding: 0 8px; font-weight: 400; transition: color .15s ease;
+}
+.vp-login-link:hover { color: var(--vp-text); }
+
+/* 开始使用：34px 全圆角 pill，bg-foreground / text-background，hover 85% 透明度 + 微阴影 */
+.vp-cta-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 34px; padding: 0 16px; border-radius: 999px !important; border: none;
+  background: var(--vp-fg) !important; color: var(--vp-invert) !important;
+  font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit;
+  transition: background-color .15s ease, box-shadow .15s ease;
+}
+.vp-cta-pill:hover {
+  background: color-mix(in srgb, var(--vp-fg) 85%, transparent) !important;
+  box-shadow: var(--vp-shadow-1);
+}
+
+/* 锚点目标让出吸顶导航高度 */
+.vp-ops, .vp-preview, .vp-report, .vp-help { scroll-margin-top: 80px; }
+
+/* 导航条与工作台间距 */
+.vp-main { margin-top: 28px; }
+
+/* ============ Hero（首屏定位：pill 徽章 + 大字标题 + 副标题，对齐 TikHub） ============ */
+.vp-hero {
+  padding: 48px 0 8px;
+}
+.vp-hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 16px; border-radius: 999px;
+  background: color-mix(in srgb, var(--vp-surface) 70%, transparent);
+  border: 1px solid var(--vp-border-strong);
+  color: var(--vp-accent);
+  font-size: 13px; font-weight: 500;
+  margin: 0 0 20px;
+}
+.vp-hero-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  background: var(--vp-accent);
+  animation: vp-pulse-dot 2s cubic-bezier(.4, 0, .6, 1) infinite;
+}
+@keyframes vp-pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.vp-hero-title {
+  font-size: 46px; line-height: 1.08; font-weight: 600; letter-spacing: -0.035em;
+  color: var(--vp-text); margin: 0 0 20px;
+}
+.vp-hero-accent {
+  color: color-mix(in srgb, var(--vp-accent) 75%, transparent);
+}
+.vp-hero-sub {
+  font-size: 17px; line-height: 1.7; color: var(--vp-text-sub);
+  margin: 0; max-width: 620px;
+}
+@media (max-width: 640px) {
+  .vp-hero { padding: 32px 0 4px; }
+  .vp-hero-title { font-size: 32px; }
+  .vp-hero-sub { font-size: 15px; }
+}
+
+/* ============ 区块标签（section label） ============ */
+.vp-section-label {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--vp-text-mute);
+  margin: 2px 2px 16px;
+}
+.vp-section-label::after { content: ""; flex: 1; height: 1px; background: var(--vp-border); }
+.vp-section-num { color: var(--vp-text-sub); font-size: 11px; font-weight: 600; }
+
+/* ============ 卡片（白底 + 细边框 + 无 blur） ============ */
+html body .gradio-container .vp-card {
+  background: var(--vp-surface) !important;
+  border: 1px solid var(--vp-border) !important;
+  border-radius: var(--vp-radius-card) !important;
+  padding: 24px !important;
+  box-shadow: var(--vp-shadow-1) !important;
+}
+html body .gradio-container .vp-card:hover { border-color: var(--vp-border-strong) !important; }
+.vp-card .gap { gap: 14px !important; }
+.vp-card-wide { margin-top: 24px; }
+.vp-ops .gap { gap: 12px !important; }
+.vp-ops .vp-section-label { margin-bottom: 14px; }
+
+/* ---------- 输入控件 ---------- */
+.gradio-container input,
+.gradio-container textarea,
+.gradio-container select {
+  background: var(--vp-surface) !important;
+  border: 1px solid var(--vp-border-strong) !important;
+  border-radius: var(--vp-radius-input) !important;
+  color: var(--vp-text) !important;
+}
+.gradio-container input:focus,
+.gradio-container textarea:focus,
+.gradio-container select:focus {
+  border-color: var(--vp-text) !important;
+  box-shadow: 0 0 0 3px var(--vp-ring) !important;
+}
+.gradio-container input::placeholder,
+.gradio-container textarea::placeholder { color: var(--vp-text-mute) !important; }
+
+/* 链接输入框：无框，focus 现形 */
+.vp-url textarea {
+  font-size: 14.5px !important; padding: 12px 14px !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+.vp-url textarea:focus {
+  border-color: var(--vp-text) !important;
+  box-shadow: 0 0 0 3px var(--vp-ring) !important;
+}
+
+/* ---------- 控件标签 ---------- */
+.gradio-container label span,
+.gradio-container .label-wrap,
+.gradio-container .block-label {
+  color: var(--vp-text-sub) !important;
+  font-size: 12px !important; font-weight: 500; letter-spacing: 0.02em;
+}
+
+/* ============ 按钮体系 ============ */
+button { border-radius: var(--vp-radius-btn) !important; font-weight: 500; }
+
+/* 主 CTA：黑底白字，唯一视觉主导 */
+button.vp-cta {
+  width: 100% !important;
+  background: var(--vp-fg) !important;
+  border: 1px solid var(--vp-fg) !important;
+  color: var(--vp-invert) !important;
+  font-weight: 550;
+  font-size: 15px !important;
+  padding: 14px 20px !important;
+}
+button.vp-cta:hover {
+  background: var(--vp-fg-hover) !important;
+  border-color: var(--vp-fg-hover) !important;
+  box-shadow: var(--vp-shadow-2) !important;
+}
+button.vp-cta:active { opacity: 0.92; }
+
+/* 次级：白底 + 细边框 */
+button.vp-secondary {
+  background: var(--vp-surface) !important;
+  border: 1px solid var(--vp-border-strong) !important;
+  color: var(--vp-text) !important;
+}
+button.vp-secondary:hover {
+  background: var(--vp-surface-2) !important;
+  border-color: var(--vp-text) !important;
+}
+
+/* 幽灵：清空 */
+button.vp-ghost {
+  background: transparent !important;
+  border: 1px solid var(--vp-border) !important;
+  color: var(--vp-text-sub) !important;
+}
+button.vp-ghost:hover { color: var(--vp-text) !important; background: var(--vp-surface-2) !important; }
+
+/* AI 分析：深色描边（次级强调，弱于主 CTA） */
+button.vp-extract {
+  flex: 1 1 0%; min-width: 0;
+  background: var(--vp-surface) !important;
+  border: 1px solid var(--vp-text) !important;
+  color: var(--vp-text) !important;
+  font-weight: 550;
+}
+button.vp-extract::before { content: "✦ "; font-size: 0.9em; }
+button.vp-extract:hover {
+  background: var(--vp-fg) !important;
+  color: var(--vp-invert) !important;
+}
+
+/* 示例 chips：文字型，hover 反色（TikHub 平台卡交互） */
+.example-btn {
+  flex: 1 1 0%; min-width: 0; white-space: nowrap;
+  padding: 6px 10px !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--vp-text-sub) !important; font-weight: 500; font-size: 12px;
+}
+.example-btn:hover {
+  background: var(--vp-fg) !important;
+  color: var(--vp-invert) !important;
+}
+
+/* 平台下拉 / 多人转写开关 */
+.vp-platform-select select {
+  font-weight: 500; color: var(--vp-text) !important;
+  border: 1px solid var(--vp-border-strong) !important;
+  background: var(--vp-surface) !important;
+}
+.vp-toggle { flex: 0 0 auto; }
+.vp-toggle input[type="checkbox"] { accent-color: var(--vp-text); }
+
+/* ============ 警告 ============ */
+.vp-warn {
+  padding: 13px 16px; border-radius: var(--vp-radius-panel);
+  margin-bottom: 20px;
+  background: #fdf2f2; border: 1px solid #f5c6c6;
+  color: #b91c1c; font-size: 13px; line-height: 1.7;
+}
+html[data-theme="dark"] .vp-warn {
+  background: rgba(220, 38, 38, 0.10); border-color: rgba(220, 38, 38, 0.35);
+  color: #fca5a5;
+}
+
+/* ============ 信息条 ============ */
+.vp-info-bar {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 14px; padding: 4px 2px;
+  background: transparent !important; border: none !important;
+  font-size: 13px; color: var(--vp-text-sub);
+}
+.vp-info-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vp-text-mute); flex-shrink: 0; }
+.vp-info-ok .vp-info-dot { background: var(--vp-ok); }
+.vp-info-err .vp-info-dot { background: var(--vp-err); }
+.vp-info-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-badge {
+  flex-shrink: 0; font-size: 11px; font-weight: 600;
+  padding: 3px 10px; border-radius: 999px;
+  background: var(--vp-surface-2); border: 1px solid var(--vp-border);
+  color: var(--vp-text-sub);
+}
+
+/* ============ 右栏空态（克制的纯白卡 + 精致三步流程） ============ */
+.vp-empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: 14px;
+  padding: 64px 30px; margin-bottom: 0;
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-panel);
+  min-height: 440px;
+}
+.vp-empty-mark {
+  width: 64px; height: 64px; border-radius: 18px;
+  color: var(--vp-text);
+  background: var(--vp-surface-2);
+  border: 1px solid var(--vp-border);
+  display: flex; align-items: center; justify-content: center;
+}
+.vp-empty-head { font-size: 17px; font-weight: 620; color: var(--vp-text); letter-spacing: -0.01em; }
+.vp-empty-desc { font-size: 14px; color: var(--vp-text-sub); line-height: 1.65; max-width: 420px; }
+.vp-empty-flow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.vp-flow-step {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13px; font-weight: 500; color: var(--vp-text-sub);
+}
+.vp-flow-step i {
+  font-style: normal; font-weight: 600; font-size: 11px;
+  width: 20px; height: 20px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--vp-fg); color: var(--vp-invert);
+}
+.vp-flow-arrow { color: var(--vp-text-mute); font-size: 13px; }
+
+/* ============ 状态框 ============ */
+.status-box textarea {
+  font-weight: 500 !important; font-size: 13px !important;
+  color: var(--vp-text) !important;
+  background: var(--vp-surface-2) !important;
+  border-color: var(--vp-border) !important;
+}
+
+/* ============ 封面 / 视频 ============ */
+.vp-cover, .vp-video {
+  border-radius: var(--vp-radius-panel); overflow: hidden;
+  border: 1px solid var(--vp-border);
+}
+
+/* ============ AI 取证报告（Markdown） ============ */
+.vp-report p { color: var(--vp-text-sub); line-height: 1.75; font-size: 14.5px; margin: 8px 0; }
+.vp-report h1, .vp-report h2, .vp-report h3 { color: var(--vp-text); font-weight: 650; letter-spacing: -0.01em; }
+.vp-report h1 { font-size: 22px; margin: 24px 0 12px; }
+.vp-report h2 {
+  font-size: 18px; margin: 26px 0 12px;
+  padding-left: 12px; border-left: 3px solid var(--vp-text);
+}
+.vp-report h3 { font-size: 15px; margin: 18px 0 8px; }
+.vp-report ul, .vp-report ol {
+  color: var(--vp-text-sub); font-size: 14.5px; line-height: 1.7;
+  margin: 8px 0; padding-left: 22px;
+}
+.vp-report li { margin: 4px 0; }
+.vp-report table { width: 100%; border-collapse: collapse; margin: 12px 0 22px; font-size: 13.5px; }
+.vp-report th {
+  background: var(--vp-surface-2); color: var(--vp-text);
+  font-weight: 600; text-align: left; padding: 9px 12px;
+  border: 1px solid var(--vp-border);
+}
+.vp-report td { padding: 9px 12px; border: 1px solid var(--vp-border); color: var(--vp-text-sub); vertical-align: top; }
+.vp-report tr:hover td { background: var(--vp-surface-2); }
+.vp-report pre, .vp-report code { font-family: "Geist Mono", ui-monospace, monospace !important; }
+.vp-report blockquote {
+  border-left: 3px solid var(--vp-border-strong);
+  padding-left: 14px; color: var(--vp-text-sub); margin: 10px 0;
+}
+.vp-report-empty {
+  padding: 52px 28px; text-align: center;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-panel);
+  color: var(--vp-text-mute);
+}
+.vp-report-empty-icon {
+  width: 52px; height: 52px; border-radius: 14px;
+  margin: 0 auto 14px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--vp-text-sub);
+  background: var(--vp-surface-2);
+  border: 1px solid var(--vp-border);
+}
+.vp-report-empty-head { font-size: 15px; font-weight: 600; color: var(--vp-text); margin-bottom: 6px; }
+.vp-report-empty-sub { font-size: 13px; color: var(--vp-text-mute); }
+
+/* ============ 使用指南（双列横卡） ============ */
+.vp-help { margin-top: 24px; }
+.vp-help-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.vp-help-item {
+  background: var(--vp-surface); border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-panel); padding: 18px 20px;
+}
+.vp-help-item:hover { border-color: var(--vp-border-strong); box-shadow: var(--vp-shadow-1); }
+.vp-help-step {
+  width: 32px; height: 32px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600;
+  color: var(--vp-invert);
+  background: var(--vp-fg);
+}
+.vp-help-title { font-size: 16px; font-weight: 600; color: var(--vp-text); margin: 12px 0 6px; letter-spacing: -0.01em; }
+.vp-help-desc { font-size: 13.5px; color: var(--vp-text-sub); line-height: 1.65; }
+.vp-help-notes {
+  margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--vp-border);
+  font-size: 12.5px; color: var(--vp-text-mute); line-height: 1.7;
+}
+
+/* ---------- 分割线 ---------- */
+.vp-divider { height: 1px; background: var(--vp-border); margin: 16px 0; }
+
+/* ============ 响应式断点 ============ */
+@media (max-width: 1080px) {
+  .gradio-container .vp-main { flex-wrap: wrap !important; }
+  .gradio-container .vp-main > .vp-ops,
+  .gradio-container .vp-main > .vp-preview { flex: 1 1 100% !important; min-width: 100% !important; }
+  .vp-video video { height: auto !important; aspect-ratio: 16 / 9 !important; }
+  .vp-cover img { height: auto !important; }
+}
+
+@media (max-width: 760px) {
+  .vp-nav-links { display: none; }
+  .vp-help-grid { grid-template-columns: 1fr; }
+  .vp-empty-state { padding: 36px 20px; }
+}
+
+@media (max-width: 640px) {
+  .vp-nav-inner { height: 58px; }
+  .vp-cta-pill { padding: 0 12px; font-size: 12px; }
+  .vp-login-link { display: none; }
+  html body .gradio-container .vp-card {
+    padding: 18px !important;
+    border-radius: 14px !important;
+  }
+  .vp-help-item { padding: 14px 16px; }
+  .vp-report table { font-size: 12.5px; }
+}
+
+/* ============================================================
+   补充硬化：以下元素颜色/底色的处理是上方「prose 加固层」未覆盖的
+   （流程步骤编号、帮助步骤编号、报告 Markdown、警告条、容器透明）
+   ============================================================ */
+html body .gradio-container .prose .vp-info-text { color: var(--vp-text-sub) !important; }
+html body .gradio-container .prose .vp-empty-mark { color: var(--vp-text) !important; }
+html body .gradio-container .prose .vp-flow-step i { color: var(--vp-invert) !important; }
+html body .gradio-container .prose .vp-help-step { color: var(--vp-invert) !important; }
+html body .gradio-container .prose .vp-warn { color: #b91c1c !important; }
+html[data-theme="dark"] .gradio-container .prose .vp-warn { color: #fca5a5 !important; }
+
+/* 报告（Markdown）正文/标题配色，同样被 .prose 压 */
+.gradio-container .prose .vp-report p,
+.gradio-container .prose .vp-report li,
+.gradio-container .prose .vp-report ul,
+.gradio-container .prose .vp-report ol,
+.gradio-container .prose .vp-report blockquote { color: var(--vp-text-sub) !important; }
+.gradio-container .prose .vp-report h1,
+.gradio-container .prose .vp-report h2,
+.gradio-container .prose .vp-report h3 { color: var(--vp-text) !important; }
+
+/* 容器底色不归 Gradio 管：强制透明，始终由 body 背景决定，
+   避免「切换主题后容器底卡在深色」的残留 */
+.gradio-container { background: transparent !important; }
+
+/* 移动端标题字号回退 */
+@media (max-width: 640px) {
+  html body .gradio-container .prose .vp-hero-title { font-size: 32px !important; }
+}
+
+/* ============================================================
+   深色模式：Gradio 组件全反转（默认浅色已由 theme.set 内联，
+   深色需在此覆盖变量 + 组件背景，否则 Textbox/Dropdown/Checkbox/
+   Image/Video/File 保持白底，观感割裂）
+   ============================================================ */
+html[data-theme="dark"] .gradio-container {
+  --body-text-color: #f2f2f0;
+  --body-text-color-subdued: #a1a1aa;
+  --block-title-text-color: #f2f2f0;
+  --block-info-text-color: #a1a1aa;
+  --block-label-text-color: #d4d4d8;
+  --block-description-text-color: #a1a1aa;
+  --input-text-color: #f2f2f0;
+  --input-placeholder-color: #71717a;
+  --button-primary-text-color: #0c0c10;
+  --button-secondary-text-color: #f2f2f0;
+  --button-tertiary-text-color: #a1a1aa;
+  --checkbox-label-text-color: #d4d4d8;
+  --link-text-color: #f2f2f0;
+  --link-text-color-hover: #ffffff;
+  --error-text-color: #fca5a5;
+  --body-background-fill: #0c0c10;
+  --background-fill-primary: #0c0c10;
+  --background-fill-secondary: #17171d;
+  --block-background-fill: #17171d;
+  --block-background-fill-hover: #1e1e26;
+  --block-border-color: #26262e;
+  --border-color-primary: #26262e;
+  --panel-background-fill: #17171d;
+  --panel-border-color: #26262e;
+  --input-background-fill: #131318;
+  --input-background-fill-focus: #131318;
+  --input-border-color: #32323a;
+  --input-border-color-focus: #f2f2f0;
+  --input-shadow-focus: 0 0 0 3px rgba(250, 250, 249, 0.14);
+  --button-primary-background-fill: #f2f2f0;
+  --button-primary-background-fill-hover: #e4e4e7;
+  --button-primary-border-color: #f2f2f0;
+  --button-secondary-background-fill: #1e1e26;
+  --button-secondary-background-fill-hover: #26262e;
+  --button-secondary-border-color: #3f3f46;
+  --checkbox-background-color: #131318;
+  --checkbox-background-color-selected: #f2f2f0;
+  --checkbox-border-color: #3f3f46;
+  --checkbox-border-color-selected: #f2f2f0;
+  --checkbox-check: #0c0c10;
+  --stat-background-fill: #17171d;
+  --code-background-fill: #1e1e26;
+  --loader-color: #f2f2f0;
+  --slider-color: #f2f2f0;
+  --prose-text-color: #f2f2f0;
+}
+
+/* 组件层背景（Gradio 内联样式直接覆盖） */
+html[data-theme="dark"] .gradio-container .block,
+html[data-theme="dark"] .gradio-container .wrap,
+html[data-theme="dark"] .gradio-container .form,
+html[data-theme="dark"] .gradio-container .panel {
+  background: #17171d !important;
+  border-color: #26262e !important;
+  box-shadow: none !important;
+}
+
+/* 媒体组件占位 */
+html[data-theme="dark"] .gradio-container .image-container,
+html[data-theme="dark"] .gradio-container .image-wrap,
+html[data-theme="dark"] .gradio-container .video-container,
+html[data-theme="dark"] .gradio-container .video-wrap,
+html[data-theme="dark"] .gradio-container [data-testid="image"],
+html[data-theme="dark"] .gradio-container [data-testid="video"],
+html[data-theme="dark"] .gradio-container [data-testid="file-component"] {
+  background: #131318 !important;
+  border-color: #26262e !important;
+}
+
+/* 状态框 */
+html[data-theme="dark"] .status-box textarea {
+  background: #131318 !important;
+  color: #f2f2f0 !important;
+}
+
+/* ============================================================
+   系统深色隔离层（关键修复 2026-09-25）
+   Gradio 前端跟随操作系统 prefers-color-scheme，运行时给 <body>
+   追加 .dark 类并启用 body_css 的全套 *_dark 变量
+   （body #0f0f11 / 文字 #f4f4f5 / 输入框 #3f3f46…）。
+   该行为与本站 html[data-theme] 完全独立：
+   系统深色 + 本站浅色 ⇒ Gradio 暗色变量污染浅色主题
+   （body 黑底、输入框黑底、prose 文字全变浅色 → 内容不可见）。
+   修复：本站浅色时把 body.dark 的 Gradio 变量整体压回浅色
+   （与 build_glass_theme 保持一致）；本站深色时统一为 --vp-bg。
+   ============================================================ */
+html[data-theme="light"] body.dark {
+  --body-background-fill: #fafaf9;
+  --background-fill-primary: #fafaf9;
+  --background-fill-secondary: #f4f4f5;
+  --block-background-fill: #ffffff;
+  --block-border-color: #e9e9ec;
+  --border-color-primary: #e9e9ec;
+  --panel-background-fill: #ffffff;
+  --panel-border-color: #e9e9ec;
+  --input-background-fill: #ffffff;
+  --input-background-fill-focus: #ffffff;
+  --input-border-color: #d4d4d8;
+  --input-border-color-focus: #1a1a1a;
+  --input-placeholder-color: #9ca3af;
+  --input-shadow-focus: 0 0 0 3px rgba(26, 26, 26, 0.08);
+  --body-text-color: #1a1a1a;
+  --body-text-color-subdued: #6b7280;
+  --block-title-text-color: #1a1a1a;
+  --block-info-text-color: #6b7280;
+  --block-label-text-color: #3f3f46;
+  --block-description-text-color: #6b7280;
+  --input-text-color: #1a1a1a;
+  --button-primary-background-fill: #1a1a1a;
+  --button-primary-background-fill-hover: #2d2d30;
+  --button-primary-text-color: #ffffff;
+  --button-primary-border-color: #1a1a1a;
+  --button-secondary-background-fill: #ffffff;
+  --button-secondary-background-fill-hover: #f4f4f5;
+  --button-secondary-text-color: #1a1a1a;
+  --button-secondary-border-color: #d4d4d8;
+  --button-secondary-border-color-hover: #1a1a1a;
+  --button-tertiary-text-color: #6b7280;
+  --checkbox-background-color: #ffffff;
+  --checkbox-background-color-selected: #1a1a1a;
+  --checkbox-border-color: #d4d4d8;
+  --checkbox-border-color-selected: #1a1a1a;
+  --checkbox-check: #ffffff;
+  --checkbox-label-text-color: #1a1a1a;
+  --link-text-color: #1a1a1a;
+  --error-text-color: #dc2626;
+  --stat-background-fill: #f4f4f5;
+  --code-background-fill: #f4f4f5;
+  --loader-color: #1a1a1a;
+  --slider-color: #1a1a1a;
+  --prose-text-color: #1a1a1a;
+  background: var(--vp-bg) !important;
+  color: var(--vp-text);
+}
+/* 组件层背景同步压回浅色（对应深色区块的 .block/.wrap 反转逻辑） */
+html[data-theme="light"] body.dark .gradio-container .block,
+html[data-theme="light"] body.dark .gradio-container .wrap,
+html[data-theme="light"] body.dark .gradio-container .form,
+html[data-theme="light"] body.dark .gradio-container .panel {
+  background: var(--vp-surface) !important;
+  border-color: var(--vp-border) !important;
+}
+html[data-theme="light"] body.dark .gradio-container .image-container,
+html[data-theme="light"] body.dark .gradio-container .image-wrap,
+html[data-theme="light"] body.dark .gradio-container .video-container,
+html[data-theme="light"] body.dark .gradio-container .video-wrap,
+html[data-theme="light"] body.dark .gradio-container [data-testid="image"],
+html[data-theme="light"] body.dark .gradio-container [data-testid="video"],
+html[data-theme="light"] body.dark .gradio-container [data-testid="file-component"] {
+  background: var(--vp-surface) !important;
+  border-color: var(--vp-border) !important;
+}
+html[data-theme="light"] body.dark .status-box textarea {
+  background: var(--vp-surface-2) !important;
+  color: var(--vp-text) !important;
+}
+/* 本站深色 + 系统深色：body 用本站底色（#0c0c10，非 Gradio 的 #0f0f11） */
+html[data-theme="dark"] body.dark {
+  background: var(--vp-bg) !important;
+}
+
+/* ============================================================
+   prose 加固层：app.css 先加载、Gradio 样式后置，同级特异性后者胜
+   （Gradio 的 .prose :where(h1) 把 hero 标题压成 26px、a 规则抢走
+   链接颜色）→ 一律 html body .gradio-container 前缀 + !important
+   ============================================================ */
+html body .gradio-container .prose .vp-hero-title {
+  font-size: 46px !important;
+  color: var(--vp-text) !important;
+}
+html body .gradio-container .prose .vp-hero-accent {
+  color: color-mix(in srgb, var(--vp-accent) 75%, transparent) !important;
+}
+html body .gradio-container .prose .vp-hero-sub { color: var(--vp-text-sub) !important; }
+html body .gradio-container .prose .vp-hero-eyebrow { color: var(--vp-accent) !important; }
+html body .gradio-container .prose .vp-section-label { color: var(--vp-text-mute) !important; }
+html body .gradio-container .prose .vp-section-num { color: var(--vp-text-sub) !important; }
+html body .gradio-container .prose .vp-info-bar { color: var(--vp-text-sub) !important; }
+html body .gradio-container .prose .vp-badge { color: var(--vp-text-sub) !important; }
+html body .gradio-container .prose .vp-empty-head { color: var(--vp-text) !important; }
+html body .gradio-container .prose .vp-empty-desc { color: var(--vp-text-sub) !important; }
+html body .gradio-container .prose .vp-flow-step { color: var(--vp-text-sub) !important; }
+html body .gradio-container .prose .vp-flow-arrow { color: var(--vp-text-mute) !important; }
+html body .gradio-container .prose .vp-help-title { color: var(--vp-text) !important; }
+html body .gradio-container .prose .vp-help-desc { color: var(--vp-text-sub) !important; }
+html body .gradio-container .prose .vp-help-notes { color: var(--vp-text-mute) !important; }
+html body .gradio-container .vp-brand-name { color: var(--vp-text) !important; }
+html body .gradio-container .vp-nav-links a { color: var(--vp-text-sub) !important; }
+html body .gradio-container .vp-nav-links a:hover { color: var(--vp-text) !important; }
+html body .gradio-container .vp-login-link { color: var(--vp-text-sub) !important; }
+html body .gradio-container .vp-login-link:hover { color: var(--vp-text) !important; }

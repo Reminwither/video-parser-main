@@ -5,6 +5,7 @@
 """
 
 import os
+import html
 import base64
 import time
 import random
@@ -355,16 +356,21 @@ def parse_video(url: str, platform: str) -> Tuple[str, str, str, str, str]:
     解析视频
 
     Returns:
-        (status_message, title, cover_image, video_url, platform_detected)
+        (status_message, info_bar_html, cover_update, video_url, guide_html)
     """
     import asyncio
-    return asyncio.run(_async_parse_video(url, platform))
+    status, info, cover, video_url, guide = asyncio.run(_async_parse_video(url, platform))
+    if cover:
+        cover_out = gr.update(visible=True, value=cover)
+    else:
+        cover_out = gr.update(visible=False)
+    return status, info, cover_out, video_url, guide
 
 async def _async_parse_video(url: str, platform: str) -> Tuple[str, str, str, str, str]:
     global current_video_info
 
     if not url or not url.strip():
-        return "请输入视频链接", "", None, "", ""
+        return "请输入视频链接", _info_bar_html("请输入视频链接", "", ok=False), None, "", EMPTY_GUIDE_HTML
 
     url = url.strip()
 
@@ -406,10 +412,10 @@ async def _async_parse_video(url: str, platform: str) -> Tuple[str, str, str, st
             cover_local_path = client.download_cover(cover_url, video_id, referer)
 
         status = f"解析成功 - {platform_name}"
-        return status, title, cover_local_path, video_url, platform_name
+        return status, _info_bar_html(title, platform_name, ok=True), cover_local_path, video_url, ""
     else:
         current_video_info = {}
-        return f"解析失败: {message}", "", None, "", ""
+        return f"解析失败: {message}", _info_bar_html("解析失败：" + message, "", ok=False), None, "", EMPTY_GUIDE_HTML
 
 
 def play_video(progress=gr.Progress()) -> Tuple[str, str]:
@@ -417,10 +423,13 @@ def play_video(progress=gr.Progress()) -> Tuple[str, str]:
     播放视频（先下载到本地缓存再播放）
 
     Returns:
-        (video_path, status_message)
+        (video_update, status_message)
     """
     import asyncio
-    return asyncio.run(_async_play_video(progress))
+    video_path, status = asyncio.run(_async_play_video(progress))
+    if video_path:
+        return gr.update(visible=True, value=video_path), status
+    return gr.update(visible=False), status
 
 async def _async_play_video(progress) -> Tuple[str, str]:
     global current_video_info
@@ -554,10 +563,13 @@ def download_video(progress=gr.Progress()) -> Tuple[str, str]:
     下载视频
 
     Returns:
-        (filepath, status_message)
+        (file_update, status_message)
     """
     import asyncio
-    return asyncio.run(_async_download_video(progress))
+    filepath, status = asyncio.run(_async_download_video(progress))
+    if filepath:
+        return gr.update(visible=True, value=filepath), status
+    return gr.update(visible=False), status
 
 async def _async_download_video(progress) -> Tuple[str, str]:
     global current_video_info
@@ -660,7 +672,7 @@ def extract_video_content(multi_speaker: bool = False, progress=gr.Progress()) -
     global current_video_info
 
     if not current_video_info:
-        return "", "请先解析视频"
+        return REPORT_PLACEHOLDER, "请先解析视频"
 
     video_id = current_video_info.get('video_id', 'video')
 
@@ -669,7 +681,7 @@ def extract_video_content(multi_speaker: bool = False, progress=gr.Progress()) -
     cache_path = os.path.join(client.cache_dir, f"{safe_id}_play.mp4")
 
     if not os.path.exists(cache_path):
-        return "", "请先点击「在线播放」加载视频后再提取内容"
+        return REPORT_PLACEHOLDER, "请先点击「在线播放」加载视频后再提取内容"
 
     try:
         qwen_client = OpenAI(
@@ -705,11 +717,143 @@ def extract_video_content(multi_speaker: bool = False, progress=gr.Progress()) -
         return "", f"提取失败: {str(e)}"
 
 
+# 信息条初始占位（空状态引导）
+INFO_BAR_EMPTY = (
+    '<div class="vp-info-bar"><span class="vp-info-dot"></span>'
+    '<span class="vp-info-text">视频信息将显示在此</span></div>'
+)
+
+# 解析 CTA 按钮图标（白色 spark，渐变紫底上双主题通用）
+ICON_SPARK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "icons", "spark.svg")
+
+# 报告区初始占位（Markdown 渲染为空态引导，分析完成后由结果替换）
+REPORT_PLACEHOLDER = """
+<div class="vp-report-empty">
+  <div class="vp-report-empty-icon">
+    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <div class="vp-report-empty-head">分析报告将在这里生成</div>
+  <div class="vp-report-empty-sub">先点击「在线播放」加载视频缓存，再点击「AI 时间轴证据分析」开始取证</div>
+</div>
+"""
+
+# 右栏空态引导（解析前展示，解析成功后由事件输出空串隐藏）
+EMPTY_GUIDE_HTML = """
+<div class="vp-empty-state">
+  <div class="vp-empty-mark">
+    <svg viewBox="0 0 24 24" width="30" height="30" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="2.5" y="5" width="19" height="14" rx="3.5" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M10 9.2v5.6l5-2.8-5-2.8z" fill="currentColor"/>
+    </svg>
+  </div>
+  <div class="vp-empty-head">等待视频解析</div>
+  <div class="vp-empty-desc">在左侧粘贴视频链接并点击「解析视频」，即可在此生成封面与在线播放</div>
+  <div class="vp-empty-flow">
+    <span class="vp-flow-step"><i>1</i>粘贴链接</span>
+    <span class="vp-flow-arrow">→</span>
+    <span class="vp-flow-step"><i>2</i>解析视频</span>
+    <span class="vp-flow-arrow">→</span>
+    <span class="vp-flow-step"><i>3</i>AI 取证</span>
+  </div>
+</div>
+"""
+
+# 注入 <head> 的主题脚本：head 解析期间同步应用主题（默认浅色），避免主题闪屏；
+# Gradio 的 gr.HTML 组件不执行内联 script，因此整段必须经 head 注入。
+# 主题偏好用 vp-theme-v2：旧系统的 vp-theme=light 是一次性作废的遗留值
+# （旧奶油编辑风时代写入），不再信任，保证新浅色系为默认。
+THEME_SCRIPT = """
+<script>
+(function () {
+  function vpTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  }
+  function vpApplyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('vp-theme-v2', t); } catch (e) {}
+    var lbl = document.querySelector('.vp-theme-label');
+    if (lbl) { lbl.textContent = (t === 'dark') ? '深色' : '浅色'; }
+  }
+  function vpToggleTheme() {
+    vpApplyTheme(vpTheme() === 'dark' ? 'light' : 'dark');
+  }
+  function vpScrollTo(sel) {
+    var el = document.querySelector(sel);
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  }
+  function vpLogin() {
+    alert('账号登录功能即将上线，敬请期待');
+  }
+  function vpSyncLabel() {
+    var lbl = document.querySelector('.vp-theme-label');
+    if (lbl) { lbl.textContent = (vpTheme() === 'dark') ? '深色' : '浅色'; }
+  }
+  var saved = null;
+  try { saved = localStorage.getItem('vp-theme-v2'); } catch (e) {}
+  vpApplyTheme(saved === 'dark' ? 'dark' : 'light');
+  window.vpToggleTheme = vpToggleTheme;
+  window.vpLogin = vpLogin;
+  window.vpScrollTo = vpScrollTo;
+  window.addEventListener('load', vpSyncLabel);
+  setTimeout(vpSyncLabel, 600);
+
+  // TikHub 式导航：透明起始，滚动 >8px 后加毛玻璃底 + 细边框（CSS .vp-nav-scrolled）
+  var _nav = null;
+  function vpOnScroll() {
+    if (!_nav) { _nav = document.getElementById('vp-nav'); }
+    if (_nav) {
+      if (window.scrollY > 8) { _nav.classList.add('vp-nav-scrolled'); }
+      else { _nav.classList.remove('vp-nav-scrolled'); }
+    }
+  }
+  window.addEventListener('scroll', vpOnScroll, { passive: true });
+  vpOnScroll();
+})();
+</script>
+"""
+
+
+def _info_bar_html(title: str, platform: str, ok: bool) -> str:
+    """构建编辑风信息条：状态点 + 平台徽章 + 标题（超出截断）。"""
+    badge = f'<span class="vp-badge">{html.escape(platform)}</span>' if platform else ""
+    cls = "vp-info-ok" if ok else "vp-info-err"
+    return (
+        f'<div class="vp-info-bar {cls}">'
+        f'<span class="vp-info-dot"></span>{badge}'
+        f'<span class="vp-info-text">{html.escape(title)}</span>'
+        f'</div>'
+    )
+
+
+def speaker_backend_status() -> Tuple[bool, str]:
+    """检测说话人分离后端是否可用，返回 (可用, 面向用户的提示文案)。
+    内部配置细节不暴露给终端用户，仅给中性提示。"""
+    backend = os.getenv("ASR_SPEAKER_BACKEND", "").strip()
+    if not backend:
+        return False, "多人转写暂不可用（需管理员开启后端）"
+    if backend == "tencent":
+        missing = []
+        if not os.getenv("TENCENT_ASR_SECRET_ID", "").strip():
+            missing.append("TENCENT_ASR_SECRET_ID")
+        if not os.getenv("TENCENT_ASR_SECRET_KEY", "").strip():
+            missing.append("TENCENT_ASR_SECRET_KEY")
+        if not (os.getenv("DOMAIN", "").strip() or os.getenv("PUBLIC_BASE_URL", "").strip()):
+            missing.append("DOMAIN")
+        if missing:
+            print(f"[config] 说话人分离后端缺配置: {'、'.join(missing)}")
+            return False, "多人转写暂不可用（后端未就绪）"
+    return True, f"已启用 {backend} 说话人分离后端"
+
+
 def clear_all():
     """清空所有内容"""
     global current_video_info
     current_video_info = {}
-    return "", "自动检测", "", "", None, None, None, ""
+    return ("", "自动检测", "", INFO_BAR_EMPTY,
+            gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
+            REPORT_PLACEHOLDER, EMPTY_GUIDE_HTML)
 
 
 # ==================== Gradio 界面 ====================
@@ -739,179 +883,72 @@ def check_ffmpeg() -> bool:
         return False
 
 
-# ==================== 深色沉浸主题 CSS ====================
+# ==================== TikHub 风格主题（浅色默认，黑白灰克制视觉） ====================
+# 视觉方向：对齐 tikhub.io —— 暖白底 #fafaf9、近黑文字 #1a1a1a、次级灰 #6b7280、
+# 黑色主 CTA、无渐变光晕、靠排版留白取胜。全套样式在 static/css/app.css
+# （经 <head> <link> 注入，改 CSS 无需重启）；此处 theme.set 仅让组件内联值同步浅色。
 
-DARK_CSS = """
-:root {
-  --body-background-fill: #0c0e13;
-  --body-text-color: #e7ebf3;
-  --body-text-color-subdued: #94a1b5;
-  --block-background-fill: #141822;
-  --block-background-fill-hover: #1a1f2b;
-  --block-border-color: #242b38;
-  --block-title-text-color: #f2f5fb;
-  --block-label-text-color: #aab4c6;
-  --block-label-background-fill: transparent;
-  --input-background-fill: #0e1219;
-  --input-border-color: #2a3340;
-  --input-shadow-focus: 0 0 0 2px rgba(59,130,246,0.35);
-  --input-focus-border-color: #3b82f6;
-  --button-primary-background-fill: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
-  --button-primary-background-fill-hover: linear-gradient(135deg, #2f6fe0 0%, #5147e0 100%);
-  --button-primary-text-color: #ffffff;
-  --button-primary-border-color: transparent;
-  --button-secondary-background-fill: #1c2330;
-  --button-secondary-background-fill-hover: #232c3b;
-  --button-secondary-text-color: #d7deea;
-  --button-secondary-border-color: #2f3a4a;
-  --button-secondary-border-color-hover: #3b4658;
-  --panel-background-fill: #11151e;
-  --border-color: #2a3340;
-  --block-radius: 16px;
-  --container-radius: 16px;
-  --input-radius: 10px;
-  --button-medium-radius: 10px;
-  --button-large-radius: 12px;
-  --button-small-radius: 999px;
-  --block-shadow: 0 8px 30px rgba(0,0,0,0.35);
-  --shadow-drop: 0 8px 30px rgba(0,0,0,0.35);
-}
-
-/* 全局背景：深空 + 双径向光晕，营造沉浸感 */
-body, .gradio-container {
-  background:
-    radial-gradient(1200px 600px at 82% -12%, rgba(99,102,241,0.14), transparent 60%),
-    radial-gradient(900px 500px at -5% 0%, rgba(59,130,246,0.12), transparent 55%),
-    #0c0e13 !important;
-}
-
-/* ===== Hero ===== */
-.vp-hero {
-  display: flex; align-items: center; justify-content: space-between;
-  flex-wrap: wrap; gap: 16px;
-  padding: 22px 26px;
-  border-radius: 18px;
-  background: linear-gradient(135deg, rgba(59,130,246,0.16), rgba(99,102,241,0.10));
-  border: 1px solid rgba(99,102,241,0.28);
-  box-shadow: 0 10px 40px rgba(0,0,0,0.35);
-}
-.vp-hero-left { display: flex; align-items: center; gap: 16px; }
-.vp-logo {
-  width: 48px; height: 48px; border-radius: 14px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 22px; color: #fff;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-  box-shadow: 0 6px 20px rgba(59,130,246,0.45);
-}
-.vp-title {
-  margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 0.5px;
-  background: linear-gradient(90deg, #e7ebf3, #aeb9ff);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-.vp-subtitle { margin: 4px 0 0; font-size: 13px; color: #9aa6bd; }
-.vp-platforms { display: flex; gap: 8px; flex-wrap: wrap; }
-.vp-platform {
-  font-size: 12px; padding: 6px 12px; border-radius: 999px;
-  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10);
-  color: #cdd6e6;
-}
-
-/* ===== 警告 ===== */
-.vp-warn {
-  padding: 14px 16px; border-radius: 12px; margin-bottom: 16px;
-  background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.35);
-  color: #f6c860; font-size: 13px; line-height: 1.6;
-}
-
-/* ===== 步骤指示器 ===== */
-.vp-steps { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 18px; }
-.vp-step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #c4cde0; }
-.vp-step-num {
-  width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 700; color: #fff;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-}
-.vp-step-arrow { color: #4a5468; font-size: 14px; }
-
-/* ===== 卡片 ===== */
-.vp-card {
-  background: rgba(20,24,34,0.85) !important;
-  border: 1px solid #242b38 !important;
-  border-radius: 16px !important;
-  padding: 18px !important;
-  box-shadow: 0 8px 30px rgba(0,0,0,0.30);
-}
-
-/* ===== 区块标签 ===== */
-.vp-section-label { font-size: 13px !important; color: #9aa6bd !important; margin-bottom: 6px !important; }
-
-/* ===== 示例按钮（胶囊） ===== */
-.example-btn {
-  flex: 1 1 auto;
-  border-radius: 999px !important;
-  background: #1c2330 !important;
-  border: 1px solid #2f3a4a !important;
-  color: #d7deea !important;
-}
-.example-btn:hover { background: #232c3b !important; border-color: #3b4658 !important; }
-
-/* ===== 平台下拉 ===== */
-.vp-platform-select select { font-weight: 600; }
-
-/* ===== 状态框（徽章化） ===== */
-.status-box textarea {
-  font-weight: 600 !important;
-  color: #cfe3ff !important;
-  background: rgba(59,130,246,0.08) !important;
-}
-
-/* ===== 只读信息框 ===== */
-.vp-readonly input, .vp-readonly textarea { color: #cdd6e6 !important; }
-
-/* ===== 封面 / 视频 ===== */
-.vp-cover { border-radius: 12px; overflow: hidden; }
-.vp-video { border-radius: 12px; overflow: hidden; background: #000; }
-
-/* ===== 分割线 ===== */
-.vp-divider { height: 1px; background: linear-gradient(90deg, transparent, #2a3340, transparent); margin: 14px 0; }
-
-/* ===== AI 分析按钮 ===== */
-.vp-extract { width: 100%; margin-top: 4px; }
-
-/* ===== 报告框（等宽字体） ===== */
-.vp-content textarea {
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px; line-height: 1.7;
-  background: #0e1219 !important;
-}
-
-/* ===== 说明区 ===== */
-.vp-section-title { font-size: 16px; font-weight: 700; color: #e7ebf3; margin: 18px 0 10px; }
-.vp-help {
-  background: rgba(20,24,34,0.6) !important;
-  border: 1px solid #242b38 !important;
-  border-radius: 14px !important;
-  padding: 16px !important;
-}
-
-/* ===== 页脚 ===== */
-.vp-footer {
-  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
-  margin-top: 22px; padding-top: 16px; border-top: 1px solid #1c232f;
-  font-size: 12px; color: #6b7689;
-}
-
-/* ===== 滚动条 ===== */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #2a3340; border-radius: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-
-/* ===== 响应式 ===== */
-@media (max-width: 720px) {
-  .vp-hero { flex-direction: column; align-items: flex-start; }
-  .vp-steps { gap: 6px; }
-}
-"""
+def build_glass_theme():
+    """构建 TikHub 风格浅色主题（默认浅色，黑主色 + Geist 字体，克制黑白灰）。
+    Gradio 6 将主题计算值内联到组件，此处把组件默认值定为浅色系，
+    深色模式由 app.css 的 html[data-theme="dark"] 覆盖反转。"""
+    theme = gr.themes.Base(
+        primary_hue=gr.themes.colors.zinc,
+        secondary_hue=gr.themes.colors.zinc,
+        neutral_hue=gr.themes.colors.zinc,
+        font=["Geist Sans", "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+              "system-ui", "-apple-system", "sans-serif"],
+        font_mono=["Geist Mono", "ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
+    )
+    _vars = {
+        "body_background_fill": "#fafaf9",
+        "background_fill_primary": "#fafaf9",
+        "background_fill_secondary": "#f4f4f5",
+        "block_background_fill": "#ffffff",
+        "block_border_color": "#e9e9ec",
+        "block_title_text_color": "#1a1a1a",
+        "block_info_text_color": "#6b7280",
+        "block_label_text_color": "#3f3f46",
+        "body_text_color": "#1a1a1a",
+        "body_text_color_subdued": "#6b7280",
+        "input_background_fill": "#ffffff",
+        "input_background_fill_focus": "#ffffff",
+        "input_border_color": "#d4d4d8",
+        "input_border_color_focus": "#1a1a1a",
+        "input_placeholder_color": "#9ca3af",
+        "input_shadow_focus": "0 0 0 3px rgba(26, 26, 26, 0.08)",
+        "button_primary_background_fill": "#1a1a1a",
+        "button_primary_background_fill_hover": "#2d2d30",
+        "button_primary_text_color": "#ffffff",
+        "button_primary_border_color": "#1a1a1a",
+        "button_secondary_background_fill": "#ffffff",
+        "button_secondary_background_fill_hover": "#f4f4f5",
+        "button_secondary_text_color": "#1a1a1a",
+        "button_secondary_border_color": "#d4d4d8",
+        "button_secondary_border_color_hover": "#1a1a1a",
+        "border_color_primary": "#e9e9ec",
+        "panel_background_fill": "#ffffff",
+        "panel_border_color": "#e9e9ec",
+        "code_background_fill": "#f4f4f5",
+        "link_text_color": "#1a1a1a",
+        "link_text_color_hover": "#000000",
+        "link_text_color_active": "#1a1a1a",
+        "loader_color": "#1a1a1a",
+        "slider_color": "#1a1a1a",
+        "stat_background_fill": "#ffffff",
+        "checkbox_background_color": "#ffffff",
+        "checkbox_background_color_selected": "#1a1a1a",
+        "checkbox_border_color": "#c4c4cc",
+        "checkbox_border_color_selected": "#1a1a1a",
+        "checkbox_check": "#ffffff",
+        "checkbox_label_text_color": "#3f3f46",
+        "error_background_fill": "#fdf2f2",
+        "error_border_color": "#f5c6c6",
+        "error_text_color": "#b91c1c",
+    }
+    for k, v in _vars.items():
+        theme.set(**{k: v})
+    return theme
 
 
 def create_app():
@@ -919,28 +956,53 @@ def create_app():
     ffmpeg_available = check_ffmpeg()
 
     with gr.Blocks(
-        title="视频解析工作台",
+        title="VidAI · 视频智能分析平台",
     ) as app:
 
-        # ===== 顶部 Hero =====
+        # ===== 顶部导航（照抄 TikHub：吸顶透明起始，滚动后毛玻璃 + 细边框过渡出现） =====
         gr.HTML(
             """
-            <div class="vp-hero">
-              <div class="vp-hero-left">
-                <div class="vp-logo">▶</div>
-                <div class="vp-hero-text">
-                  <h1 class="vp-title">视频解析工作台</h1>
-                  <p class="vp-subtitle">多平台解析 · 无水印下载 · AI 时间轴证据分析</p>
+            <div class="vp-nav" id="vp-nav">
+              <div class="vp-nav-inner">
+                <div class="vp-nav-left">
+                  <a class="vp-brand" href="javascript:void(0)" aria-label="VidAI 首页">
+                    <span class="vp-nav-logo">
+                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8 5.5v13l11-6.5-11-6.5z" fill="#ffffff"/>
+                      </svg>
+                    </span>
+                    <span class="vp-brand-name">VidAI</span>
+                  </a>
+                </div>
+                <div class="vp-nav-links">
+                  <a href="javascript:void(0)" onclick="vpScrollTo('.vp-ops')">视频解析</a>
+                  <a href="javascript:void(0)" onclick="vpScrollTo('.vp-report')">AI 分析</a>
+                  <a href="javascript:void(0)" onclick="vpScrollTo('.vp-help')">使用指南</a>
+                </div>
+                <div class="vp-nav-right">
+                  <button class="vp-theme-round" id="vp-theme-btn" type="button" onclick="vpToggleTheme()" title="切换深色 / 浅色模式" aria-label="切换深色 / 浅色模式">
+                    <svg class="vp-icon-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+                    <svg class="vp-icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/></svg>
+                  </button>
+                  <a class="vp-login-link" href="javascript:void(0)" onclick="vpLogin()">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg>
+                    登录
+                  </a>
+                  <button class="vp-cta-pill" type="button" onclick="vpScrollTo('.vp-url')">开始使用</button>
                 </div>
               </div>
-              <div class="vp-platforms">
-                <span class="vp-platform">抖音</span>
-                <span class="vp-platform">哔哩哔哩</span>
-                <span class="vp-platform">小红书</span>
-                <span class="vp-platform">快手</span>
-                <span class="vp-platform">好看视频</span>
-              </div>
             </div>
+            """
+        )
+
+        # ===== Hero（首屏定位，对齐 TikHub：pill 徽章 + 大字标题 + 一句价值主张） =====
+        gr.HTML(
+            """
+            <section class="vp-hero">
+              <div class="vp-hero-eyebrow"><span class="vp-hero-dot"></span>视频智能分析平台</div>
+              <h1 class="vp-hero-title">解析 · 下载 · <span class="vp-hero-accent">AI 取证</span></h1>
+              <p class="vp-hero-sub">粘贴抖音、哔哩哔哩、小红书、快手、好看视频链接，在线播放、下载无水印原画，并按时间轴生成多模态证据报告。</p>
+            </section>
             """
         )
 
@@ -955,114 +1017,112 @@ def create_app():
                 """
             )
 
-        # ===== 步骤指示器 =====
-        gr.HTML(
-            """
-            <div class="vp-steps">
-              <div class="vp-step"><span class="vp-step-num">1</span><span>粘贴链接</span></div>
-              <div class="vp-step-arrow">→</div>
-              <div class="vp-step"><span class="vp-step-num">2</span><span>解析视频</span></div>
-              <div class="vp-step-arrow">→</div>
-              <div class="vp-step"><span class="vp-step-num">3</span><span>播放 / 下载</span></div>
-              <div class="vp-step-arrow">→</div>
-              <div class="vp-step"><span class="vp-step-num">4</span><span>AI 分析</span></div>
-            </div>
-            """
-        )
+        # ===== 步骤指示器（编辑风极简：删除） =====
 
-        with gr.Row(equal_height=False):
-            # ---------- 左栏：输入 ----------
-            with gr.Column(scale=2, elem_classes=["vp-card"]):
+        # 说话人分离后端可用性（加载时检测，不可用则禁用开关）
+        speaker_avail, speaker_info = speaker_backend_status()
+
+        with gr.Row(elem_classes=["vp-main"]):
+            # ---------- 左栏：操作台（紧凑，主 CTA 独立全宽） ----------
+            with gr.Column(scale=4, elem_classes=["vp-card", "vp-ops"]):
+                gr.HTML('<div class="vp-section-label"><span class="vp-section-num">01</span>解析视频</div>')
                 url_input = gr.Textbox(
                     label="视频链接",
-                    placeholder="粘贴抖音 / B站 / 小红书 / 快手 / 好看视频 分享链接…",
+                    placeholder="粘贴抖音 / B站 / 小红书 / 快手 / 好看视频分享链接…",
                     lines=3,
                     elem_classes=["vp-url"]
                 )
 
-                gr.Markdown("**一键示例**（点击自动填充）", elem_classes=["vp-section-label"])
+                # 主 CTA：紧跟输入框，独立全宽，唯一视觉主导（黑底白字，克制的 TikHub 语言）
+                parse_btn = gr.Button("解析视频", variant="primary", size="lg", elem_classes=["vp-cta"])
+
+                # 信息条：状态点 + 平台徽章 + 标题
+                title_bar = gr.HTML(INFO_BAR_EMPTY)
+
+                gr.HTML('<div class="vp-divider"></div>')
+
+                # 示例链接（轻量文字 chips）
                 with gr.Row():
                     douyin_btn = gr.Button("抖音", size="sm", elem_classes=["example-btn"])
                     bilibili_btn = gr.Button("哔哩哔哩", size="sm", elem_classes=["example-btn"])
                     xiaohongshu_btn = gr.Button("小红书", size="sm", elem_classes=["example-btn"])
-                with gr.Row():
                     kuaishou_btn = gr.Button("快手", size="sm", elem_classes=["example-btn"])
                     haokan_btn = gr.Button("好看视频", size="sm", elem_classes=["example-btn"])
 
-                platform_dropdown = gr.Dropdown(
-                    label="平台选择",
-                    choices=["自动检测", "抖音", "哔哩哔哩", "小红书", "快手", "好看视频"],
-                    value="自动检测",
-                    interactive=True,
-                    elem_classes=["vp-platform-select"]
-                )
+                # 平台选择与清空（次级）
+                with gr.Row(equal_height=True):
+                    platform_dropdown = gr.Dropdown(
+                        label="来源平台",
+                        choices=["自动检测", "抖音", "哔哩哔哩", "小红书", "快手", "好看视频"],
+                        value="自动检测",
+                        interactive=True,
+                        elem_classes=["vp-platform-select"],
+                        scale=1,
+                    )
+                    clear_btn = gr.Button("清空", variant="secondary", size="lg", scale=1, elem_classes=["vp-ghost"])
 
+                gr.HTML('<div class="vp-divider"></div>')
+
+                # 播放 / 下载（玻璃次级按钮）
                 with gr.Row():
-                    parse_btn = gr.Button("解析视频", variant="primary", size="lg")
-                    clear_btn = gr.Button("清空", variant="secondary", size="lg")
+                    play_btn = gr.Button("在线播放", variant="secondary", elem_classes=["vp-secondary"])
+                    download_btn = gr.Button("下载视频", variant="secondary", elem_classes=["vp-secondary"])
 
-                # 状态显示
+                # 视频内容提取（多人转写开关 + AI 分析按钮）
+                with gr.Row(equal_height=True):
+                    multi_speaker_chk = gr.Checkbox(
+                        label="多人转写",
+                        value=False,
+                        interactive=speaker_avail,
+                        info=speaker_info,
+                        elem_classes=["vp-toggle"],
+                    )
+                    extract_btn = gr.Button("AI 时间轴证据分析", variant="primary", elem_classes=["vp-extract"])
+
+                # 状态反馈（信息流底部）
                 status_output = gr.Textbox(
                     label="状态",
+                    lines=1,
+                    max_lines=3,
                     interactive=False,
                     elem_classes=["status-box"]
                 )
 
-                # 视频信息
-                title_output = gr.Textbox(
-                    label="视频标题",
-                    interactive=False,
-                    elem_classes=["vp-readonly"]
-                )
+            # ---------- 右栏：主预览（唯一视觉锚点） ----------
+            with gr.Column(scale=6, elem_classes=["vp-card", "vp-preview"]):
+                gr.HTML('<div class="vp-section-label"><span class="vp-section-num">02</span>预览</div>')
+                # 空态引导（解析前展示，解析成功后由事件输出空串隐藏）
+                guide_html = gr.HTML(EMPTY_GUIDE_HTML)
 
-                platform_output = gr.Textbox(
-                    label="识别平台",
-                    interactive=False,
-                    elem_classes=["vp-readonly"]
-                )
-
-            # ---------- 右栏：输出 ----------
-            with gr.Column(scale=3, elem_classes=["vp-card"]):
-                cover_output = gr.Image(
-                    label="视频封面",
-                    height=300,
-                    elem_classes=["vp-cover"]
-                )
-
-                # 操作按钮
-                with gr.Row():
-                    play_btn = gr.Button("在线播放", variant="primary")
-                    download_btn = gr.Button("下载视频", variant="secondary")
-
-                # 视频播放器
+                # 在线播放器（主导视觉；有内容才显示，避免首屏空白播放器）
                 video_output = gr.Video(
-                    label="视频播放",
-                    height=400,
+                    label="在线播放",
+                    height=440,
+                    visible=False,
                     elem_classes=["vp-video"]
                 )
 
-                # 下载文件
-                download_output = gr.File(
-                    label="下载文件",
-                    visible=True
-                )
+                # 封面缩略 + 下载文件（预览下方信息带；有内容才显示）
+                with gr.Row():
+                    cover_output = gr.Image(
+                        label="视频封面",
+                        height=190,
+                        visible=False,
+                        elem_classes=["vp-cover"]
+                    )
+                    download_output = gr.File(
+                        label="下载文件",
+                        visible=False,
+                    )
 
-                # 视频内容提取
-                gr.HTML('<div class="vp-divider"></div>')
-                multi_speaker_chk = gr.Checkbox(
-                    label="多人转写（说话人分离）",
-                    value=False,
-                    info="开启后按说话人标注输出；需在 .env 配置 ASR_SPEAKER_BACKEND 后端",
-                )
-                extract_btn = gr.Button("AI 时间轴证据分析", variant="secondary", elem_classes=["vp-extract"])
-                content_output = gr.Textbox(
-                    label="视频证据与分析报告",
-                    lines=10,
-                    max_lines=20,
-                    interactive=False,
-                    placeholder="点击「AI 时间轴证据分析」，系统将先建立字幕/音频/画面的时间轴证据，再生成分析报告…",
-                    elem_classes=["vp-content"]
-                )
+        # ---------- 全宽：AI 取证报告（Markdown Dashboard，章节 + 时间轴表格） ----------
+        with gr.Column(elem_classes=["vp-card", "vp-card-wide"]):
+            gr.HTML('<div class="vp-section-label"><span class="vp-section-num">03</span>AI 取证报告</div>')
+            content_output = gr.Markdown(
+                value=REPORT_PLACEHOLDER,
+                sanitize_html=True,
+                elem_classes=["vp-report"],
+            )
 
         # 隐藏的视频 URL 存储
         video_url_state = gr.State("")
@@ -1098,7 +1158,7 @@ def create_app():
         parse_btn.click(
             fn=parse_video,
             inputs=[url_input, platform_dropdown],
-            outputs=[status_output, title_output, cover_output, video_url_state, platform_output]
+            outputs=[status_output, title_bar, cover_output, video_url_state, guide_html]
         )
 
         play_btn.click(
@@ -1122,37 +1182,38 @@ def create_app():
         clear_btn.click(
             fn=clear_all,
             inputs=[],
-            outputs=[url_input, platform_dropdown, status_output, title_output,
-                    cover_output, video_output, download_output, content_output]
+            outputs=[url_input, platform_dropdown, status_output, title_bar,
+                    cover_output, video_output, download_output, content_output, guide_html]
         )
 
-        # 使用说明（卡片化）
-        gr.HTML('<div class="vp-section-title">使用说明</div>')
-        gr.Markdown(
-            """
-            **① 粘贴链接**：将视频分享链接粘贴到输入框，或点击上方示例按钮快速填充
-            **② 选择平台**：可自动检测或手动选择
-            **③ 解析视频**：点击解析获取视频信息（标题、封面、直链）
-            **④ 在线播放**：直接播放视频（B 站视频会先下载再合并播放）
-            **⑤ 下载视频**：下载视频到本地 `downloads` 目录
-            **⑥ AI 证据分析**：先点击在线播放加载视频，再按时间轴对齐字幕 / 可用转写 / 画面，生成可回查的分析报告
-
-            **支持平台**：抖音 · 哔哩哔哩 · 小红书 · 快手 · 好看视频
-
-            **注意事项**
-            - 本服务已整合后端 API，单端口（7860）同时提供 Web 与接口
-            - B 站视频为音视频分离，需要 ffmpeg 支持
-            - 下载的视频保存在 `downloads` 目录，AI 分析需先播放视频（加载到本地缓存）
-            """,
-            elem_classes=["vp-help"]
-        )
-
-        # 页脚
+        # 使用指南（双列横向卡，打破同构小卡网格）
         gr.HTML(
             """
-            <div class="vp-footer">
-              <span>视频解析工作台 · Video Parser v2.0</span>
-              <span>FastAPI + Gradio + Qwen3-VL</span>
+            <div class="vp-section-label"><span class="vp-section-num">04</span>使用指南</div>
+            <div class="vp-help">
+              <div class="vp-help-grid">
+                <div class="vp-help-item">
+                  <div class="vp-help-step">01</div>
+                  <div class="vp-help-title">粘贴链接</div>
+                  <div class="vp-help-desc">支持抖音 / 哔哩哔哩 / 小红书 / 快手 / 好看视频分享链接，自动识别平台</div>
+                </div>
+                <div class="vp-help-item">
+                  <div class="vp-help-step">02</div>
+                  <div class="vp-help-title">解析视频</div>
+                  <div class="vp-help-desc">封面、时长与视频信息一屏展示，无需手动选择来源</div>
+                </div>
+                <div class="vp-help-item">
+                  <div class="vp-help-step">03</div>
+                  <div class="vp-help-title">播放 / 下载</div>
+                  <div class="vp-help-desc">在线播放走本地缓存，下载输出无水印原画（B 站自动合并音视频）</div>
+                </div>
+                <div class="vp-help-item">
+                  <div class="vp-help-step">04</div>
+                  <div class="vp-help-title">AI 取证分析</div>
+                  <div class="vp-help-desc">字幕 / 音频 / 画面逐段时间轴取证，支持多人转写输出分组稿</div>
+                </div>
+              </div>
+              <div class="vp-help-notes">下载的视频保存在 downloads 目录 · AI 分析前需先播放视频加载缓存</div>
             </div>
             """
         )
@@ -1228,6 +1289,101 @@ class BasicAuthMiddleware:
         await self.app(scope, receive, send)
 
 
+class VersionedAssetsMiddleware:
+    """资源缓存键升级：把 HTML 里的 /assets/、/theme.css、/static/js/ 引用改写为 /v2/ 前缀，
+    并将 /v2/* 请求还原回原路径交给内部路由。
+    目的：让浏览器以全新 URL 重新拉取资源，绕开早期 no-store 阶段写坏的磁盘缓存条目
+    （Chrome ERR_CACHE_READ_FAILURE / Failed to fetch dynamically imported module）。
+    动态 import 的 chunk 相对 index.js 解析，因此随前缀一起换键，整棵资源树都会干净重拉。
+    """
+
+    def __init__(self, app, prefix="/v2"):
+        self.app = app
+        self.prefix = prefix
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path = scope.get("path", "")
+        if path.startswith(self.prefix + "/"):
+            scope = dict(scope)
+            scope["path"] = path[len(self.prefix):]
+
+        is_html = False
+
+        async def send_wrapper(message):
+            nonlocal is_html
+            if message["type"] == "http.response.start":
+                is_html = any(
+                    k.lower() == b"content-type" and b"text/html" in v
+                    for k, v in message.get("headers", [])
+                )
+                if is_html:
+                    # body 会被改写，去掉 content-length 让服务端按 chunked 重算
+                    message = dict(message)
+                    message["headers"] = [
+                        (k, v) for (k, v) in message.get("headers", [])
+                        if k.lower() != b"content-length"
+                    ]
+            elif message["type"] == "http.response.body" and is_html and "body" in message:
+                body = message["body"].replace(
+                    b"/assets/", (self.prefix + "/assets/").encode()
+                ).replace(
+                    b"/theme.css", (self.prefix + "/theme.css").encode()
+                ).replace(
+                    b"/static/js/", (self.prefix + "/static/js/").encode()
+                )
+                message = dict(message)
+                message["body"] = body
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+class NoCacheMiddleware:
+    """缓存策略：
+    - 页面与 API：no-store，杜绝浏览器/预览器缓存旧版页面导致"刷新就变"
+    - 前端资源（/assets、/theme.css、/static）：no-cache + must-revalidate，
+      强制每次加载先回源校验——既自愈早期 no-store 造成的损坏缓存条目
+      （Chrome ERR_CACHE_READ_FAILURE / 动态模块加载失败），也保证部署后不残留旧资源
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                path = scope.get("path", "")
+                ctype = ""
+                for k, v in message.get("headers", []):
+                    if k.lower() == b"content-type":
+                        ctype = v.decode("latin-1", "ignore")
+                if "text/html" in ctype or ctype.startswith("application/json"):
+                    policy = b"no-store, no-cache, must-revalidate, max-age=0"
+                elif path.startswith("/assets/") or path.startswith("/theme.css") or path.startswith("/static/"):
+                    policy = b"no-cache, must-revalidate"
+                else:
+                    await send(message)
+                    return
+                headers = [
+                    (k, v) for (k, v) in message.get("headers", [])
+                    if k.lower() not in (b"cache-control", b"pragma", b"expires")
+                ]
+                headers.append((b"cache-control", policy))
+                headers.append((b"pragma", b"no-cache"))
+                message = dict(message)
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
 # ==================== 主程序 ====================
 
 if __name__ == "__main__":
@@ -1247,25 +1403,36 @@ if __name__ == "__main__":
     
     app = create_app()
 
-    # 深色沉浸主题
-    app.theme = gr.themes.Base(
-        primary_hue=gr.themes.colors.blue,
-        secondary_hue=gr.themes.colors.cyan,
-        neutral_hue=gr.themes.colors.slate,
-        font=["PingFang SC", "Microsoft YaHei", "Inter", "system-ui", "sans-serif"],
-    )
+    # 深色玻璃工作台主题（Gradio 6 需 set 变量使组件内联计算值同步为深色）
+    _theme = build_glass_theme()
 
-    app.css = DARK_CSS
-    
-    # 挂载 FastAPI 应用到 Gradio
-    # 这使得 API 和 Gradio 可以共享同一个端口 (7860)
-    combined_app = gr.mount_gradio_app(api_app, app, path="/")
+    # 挂载 FastAPI 应用到 Gradio，共享端口 (7860)
+    # 样式经 <link> 注入 <head>（static/css/app.css，改 CSS 无需重启服务），
+    # 主题脚本内联注入，head 解析期间同步应用主题，杜绝闪屏与布局抖动。
+    # ?v= 版本号防缓存：CSS 迭代后强制浏览器拉新（否则旧样式会残留在用户端）
+    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260925b">\n' + THEME_SCRIPT
+    try:
+        combined_app = gr.mount_gradio_app(
+            api_app, app, path="/",
+            theme=_theme,
+            head=HEAD_CONTENT,
+        )
+    except TypeError:
+        app.theme = _theme
+        combined_app = gr.mount_gradio_app(api_app, app, path="/")
 
     # 访问鉴权：若服务器 .env 配置了 APP_PASS，则启用 Basic Auth（账号密码从环境变量读）
     _app_user = os.getenv("APP_USER", "admin")
     _app_pass = os.getenv("APP_PASS", "")
     if os.getenv("REQUIRE_AUTH") == "1" and not _app_pass:
         raise RuntimeError("REQUIRE_AUTH=1 requires APP_PASS")
+
+    # 缓存策略：页面/API no-store；前端资源 no-cache 回源校验（防"刷新就变"与损坏缓存）
+    combined_app = NoCacheMiddleware(combined_app)
+
+    # 资源缓存键升级：/v2/ 前缀绕开损坏的磁盘缓存条目（ERR_CACHE_READ_FAILURE 自愈）
+    combined_app = VersionedAssetsMiddleware(combined_app)
+
     if _app_pass:
         combined_app = BasicAuthMiddleware(combined_app, _app_user, _app_pass)
         print("已启用 Basic Auth 访问鉴权")

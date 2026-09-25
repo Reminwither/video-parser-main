@@ -147,6 +147,13 @@ if not os.path.exists(static_dir):
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
+# Gradio 前端 dev 检测会请求 /@vite/client，非开发环境返回空 JS 避免 404 噪音
+@app.api_route("/@vite/client", methods=["GET", "HEAD"])
+async def vite_client_stub():
+    from fastapi.responses import Response
+    return Response(content="", media_type="application/javascript")
+
+
 # ==================== API 路由 ====================
 
 @app.get("/health")

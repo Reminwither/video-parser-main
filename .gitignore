@@ -70,3 +70,24 @@ logs/
 downloads/
 cache/
 models/
+
+# Gradio 调试转储
+_config_dump.json
+_gradio*.json
+
+# 运行时媒体与本地调试产物
+static/videos/
+static/images/
+.tmp_*/
+_*.png
+_*.json
+_*.log
+_*.html
+_*.txt
+_*.mp3
+page-*.png
+header-*.png
+band_*.png
+guide_*.png
+h_*.png
+sec_*.png
