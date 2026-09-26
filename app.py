@@ -911,13 +911,16 @@ THEME_SCRIPT = """
       if (!root) return;
       var t = d[id];
       if (t == null) return;
-      if (sel === 'button') {
-        var b = root.querySelector('button');
-        if (b) b.textContent = t;
+      var target;
+      if (root.tagName === 'BUTTON') {
+        // Gradio 6 把 elem_id 直接放在 <button> 自身上
+        target = root;
+      } else if (sel === 'button') {
+        target = root.querySelector('button');
       } else {
-        var lab = root.querySelector(sel);
-        if (lab) lab.textContent = t;
+        target = root.querySelector(sel) || root.querySelector('label') || root.querySelector('[class*="label"]');
       }
+      if (target) target.textContent = t;
     });
     var lb = document.getElementById('vp-lang-btn');
     if (lb) lb.textContent = d.lang_btn;
