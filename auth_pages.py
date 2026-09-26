@@ -3,7 +3,7 @@
 登录 / 注册 / 账户页面的 HTML 渲染（自包含，无模板引擎依赖）
 
 视觉与工作台的 TikHub 风格设计令牌一致：
-  浅色 #ffffff 底 / 深色 #0c0c10 底，indigo 强调色，圆角卡片。
+  浅色 #ffffff 底 / 深色 #17171d 底，indigo 强调色，圆角卡片。
 深浅色跟随站点主题键 localStorage['vp-theme-v2']，与主站互通。
 """
 

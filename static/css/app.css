@@ -35,7 +35,7 @@
 }
 
 html[data-theme="dark"] {
-  --vp-bg: #0c0c10;
+  --vp-bg: #17171d;
   --vp-surface: #17171d;
   --vp-surface-2: #1e1e26;
   --vp-border: #26262e;
@@ -45,7 +45,7 @@ html[data-theme="dark"] {
   --vp-text-mute: #71717a;
   --vp-fg: #f2f2f0;
   --vp-fg-hover: #e4e4e7;
-  --vp-invert: #0c0c10;
+  --vp-invert: #17171d;
   --vp-accent: #818cf8;
   --vp-accent-hover: #a5b4fc;
   --vp-accent-light: #1e1b4b;
@@ -54,7 +54,7 @@ html[data-theme="dark"] {
   --vp-err: #f87171;
   --vp-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --vp-shadow-2: 0 8px 24px rgba(0, 0, 0, 0.45);
-  --vp-nav-bg: rgba(12, 12, 16, 0.72);
+  --vp-nav-bg: rgba(23, 23, 29, 0.72);
 }
 
 /* ---------- 画布：纯暖白/纯黑底，无渐变无光晕 ---------- */
@@ -112,7 +112,7 @@ html[data-theme="dark"] ::selection { background: rgba(250, 250, 249, 0.22); }
 ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 8px; border: 2px solid #ffffff; }
 ::-webkit-scrollbar-thumb:hover { background: #b9b9c1; }
 ::-webkit-scrollbar-track { background: transparent; }
-html[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #3f3f46; border-color: #0c0c10; }
+html[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #3f3f46; border-color: #17171d; }
 html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #52525b; }
 
 /* ---------- 过渡（克制：仅颜色/边框/阴影微过渡） ---------- */
@@ -631,15 +631,15 @@ html[data-theme="dark"] .gradio-container {
   --block-description-text-color: #a1a1aa;
   --input-text-color: #f2f2f0;
   --input-placeholder-color: #71717a;
-  --button-primary-text-color: #0c0c10;
+  --button-primary-text-color: #17171d;
   --button-secondary-text-color: #f2f2f0;
   --button-tertiary-text-color: #a1a1aa;
   --checkbox-label-text-color: #d4d4d8;
   --link-text-color: #f2f2f0;
   --link-text-color-hover: #ffffff;
   --error-text-color: #fca5a5;
-  --body-background-fill: #0c0c10;
-  --background-fill-primary: #0c0c10;
+  --body-background-fill: #17171d;
+  --background-fill-primary: #17171d;
   --background-fill-secondary: #17171d;
   --block-background-fill: #17171d;
   --block-background-fill-hover: #1e1e26;
@@ -662,7 +662,7 @@ html[data-theme="dark"] .gradio-container {
   --checkbox-background-color-selected: #f2f2f0;
   --checkbox-border-color: #3f3f46;
   --checkbox-border-color-selected: #f2f2f0;
-  --checkbox-check: #0c0c10;
+  --checkbox-check: #17171d;
   --stat-background-fill: #17171d;
   --code-background-fill: #1e1e26;
   --loader-color: #f2f2f0;
