@@ -47,9 +47,12 @@ def _requires_login_redirect(path: str) -> bool:
 
 
 def _requires_login_json(path: str) -> bool:
-    """业务 API：未登录返回 401 JSON（/api/auth/me 公开，前端用它判断登录态）。"""
+    """业务 API：未登录返回 401 JSON。
+    /api/auth/* 是鉴权入口（me/登录），必须匿名可达；其余 /api/* 需登录。"""
+    if path.startswith("/api/auth/"):
+        return False
     if path.startswith("/api/"):
-        return path != "/api/auth/me"
+        return True
     return False
 
 
