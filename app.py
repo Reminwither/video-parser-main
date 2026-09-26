@@ -932,7 +932,20 @@ THEME_SCRIPT = """
       } else {
         target = root.querySelector(sel) || root.querySelector('label') || root.querySelector('[class*="label"]');
       }
-      if (target) target.textContent = t;
+      if (target) {
+        // 【关键修复】Gradio 6 的 label 是容器：
+        //   <label><span data-testid="block-info">文本</span><div><textarea/input></div></label>
+        // 整体 textContent 会把内部输入控件一起抹掉（曾导致 URL 输入框/状态框
+        // 消失、无法粘贴链接）。只替换 block-info / 首个 span 的文本；
+        // 仅当目标不含任何子元素时才整体替换。
+        var innerCtl = target.querySelector('textarea,input,select');
+        var infoSpan = target.querySelector('span[data-testid="block-info"]') || target.querySelector('span');
+        if (infoSpan) {
+          infoSpan.textContent = t;
+        } else if (!innerCtl && target.children.length === 0) {
+          target.textContent = t;
+        }
+      }
     });
     var lb = document.getElementById('vp-lang-btn');
     if (lb) lb.textContent = d.lang_btn;
