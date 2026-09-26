@@ -1048,10 +1048,10 @@ THEME_SCRIPT = """
           link.setAttribute('href', '/account');
           link.innerHTML = '<span class="vp-user-dot"></span>' + String(o.d.data.username).replace(/[<>&]/g, '');
         }
-        window.vpCloseLoginModal();
-        // 登录成功 → 自动继续登录前被拦下的动作（解析/播放/下载/提取），
-        // 用户粘贴的链接保持不变，无需再点一次。
+        // 登录成功 → 自动继续登录前被拦下的动作（解析/播放/下载/提取）。
+        // 注意顺序：先取 pending 再关弹窗——vpCloseLoginModal 会清空 __vp_pending。
         var pend = window.__vp_pending; window.__vp_pending = null;
+        window.vpCloseLoginModal();
         if (pend) {
           var pb = document.getElementById('vp_btn_' + pend);
           if (pb) { setTimeout(function () { pb.click(); }, 350); }
