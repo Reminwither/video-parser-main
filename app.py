@@ -940,21 +940,6 @@ THEME_SCRIPT = """
   setTimeout(vpBindLoginModal, 800);
   setTimeout(vpBindLoginModal, 2500);
 
-  // 把顶部导航与登录弹窗从 Gradio 容器里"提升"到 body 直接子级：
-  // Gradio 6 的根 <gradio-app> 常带 transform / 祖先带 overflow，会让
-  // position:fixed 被当成"相对容器内部定位"而失效（之前 sticky 不灵的同因）。
-  // 提升到 body 后二者都脱离 Gradio 的包含块与层叠上下文，吸顶与弹窗层级稳定；
-  // 弹窗 z-index(9999) 高于导航(60)，登录弹窗始终盖在导航之上。
-  function vpPortalChrome() {
-    var nav = document.getElementById('vp-nav');
-    var modal = document.getElementById('vp-login-modal');
-    if (nav && nav.parentNode !== document.body) { document.body.appendChild(nav); }
-    if (modal && modal.parentNode !== document.body) { document.body.appendChild(modal); }
-  }
-  window.addEventListener('load', vpPortalChrome);
-  setTimeout(vpPortalChrome, 600);
-  setTimeout(vpPortalChrome, 1500);
-
   // TikHub 式导航：透明起始，滚动 >8px 后加毛玻璃底 + 细边框（CSS .vp-nav-scrolled）
   var _nav = null;
   function vpOnScroll() {
