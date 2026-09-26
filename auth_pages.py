@@ -3,7 +3,7 @@
 登录 / 注册 / 账户页面的 HTML 渲染（自包含，无模板引擎依赖）
 
 视觉与工作台的 TikHub 风格设计令牌一致：
-  浅色 #fafaf9 底 / 深色 #0c0c10 底，indigo 强调色，圆角卡片。
+  浅色 #ffffff 底 / 深色 #0c0c10 底，indigo 强调色，圆角卡片。
 深浅色跟随站点主题键 localStorage['vp-theme-v2']，与主站互通。
 """
 
@@ -14,7 +14,7 @@ _COMMON_STYLE = """
 :root { color-scheme: light; }
 html[data-theme="dark"] { color-scheme: dark; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html[data-theme="light"], html[data-theme="light"] body { --bg: #fafaf9; --surface: #ffffff;
+html[data-theme="light"], html[data-theme="light"] body { --bg: #ffffff; --surface: #ffffff;
   --border: #e4e4e7; --border-strong: #d4d4d8; --text: #1a1a1a; --text-sub: #6b7280;
   --accent: #6366f1; --accent-hover: #4f46e5; --accent-light: #eef2ff; --err: #dc2626; --ok: #16a34a; }
 html[data-theme="dark"], html[data-theme="dark"] body { --bg: #0c0c10; --surface: #17171d;

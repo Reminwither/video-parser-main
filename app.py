@@ -940,6 +940,21 @@ THEME_SCRIPT = """
   setTimeout(vpBindLoginModal, 800);
   setTimeout(vpBindLoginModal, 2500);
 
+  // 把顶部导航与登录弹窗从 Gradio 容器里"提升"到 body 直接子级：
+  // Gradio 6 的根 <gradio-app> 常带 transform / 祖先带 overflow，会让
+  // position:fixed 被当成"相对容器内部定位"而失效（之前 sticky 不灵的同因）。
+  // 提升到 body 后二者都脱离 Gradio 的包含块与层叠上下文，吸顶与弹窗层级稳定；
+  // 弹窗 z-index(9999) 高于导航(60)，登录弹窗始终盖在导航之上。
+  function vpPortalChrome() {
+    var nav = document.getElementById('vp-nav');
+    var modal = document.getElementById('vp-login-modal');
+    if (nav && nav.parentNode !== document.body) { document.body.appendChild(nav); }
+    if (modal && modal.parentNode !== document.body) { document.body.appendChild(modal); }
+  }
+  window.addEventListener('load', vpPortalChrome);
+  setTimeout(vpPortalChrome, 600);
+  setTimeout(vpPortalChrome, 1500);
+
   // TikHub 式导航：透明起始，滚动 >8px 后加毛玻璃底 + 细边框（CSS .vp-nav-scrolled）
   var _nav = null;
   function vpOnScroll() {
@@ -1025,7 +1040,7 @@ def check_ffmpeg() -> bool:
 
 
 # ==================== TikHub 风格主题（浅色默认，黑白灰克制视觉） ====================
-# 视觉方向：对齐 tikhub.io —— 暖白底 #fafaf9、近黑文字 #1a1a1a、次级灰 #6b7280、
+# 视觉方向：对齐 tikhub.io —— 白底 #ffffff、近黑文字 #1a1a1a、次级灰 #6b7280、
 # 黑色主 CTA、无渐变光晕、靠排版留白取胜。全套样式在 static/css/app.css
 # （经 <head> <link> 注入，改 CSS 无需重启）；此处 theme.set 仅让组件内联值同步浅色。
 
@@ -1042,8 +1057,8 @@ def build_glass_theme():
         font_mono=["Geist Mono", "ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
     )
     _vars = {
-        "body_background_fill": "#fafaf9",
-        "background_fill_primary": "#fafaf9",
+        "body_background_fill": "#ffffff",
+        "background_fill_primary": "#ffffff",
         "background_fill_secondary": "#f4f4f5",
         "block_background_fill": "#ffffff",
         "block_border_color": "#e9e9ec",
@@ -1574,7 +1589,7 @@ if __name__ == "__main__":
     # 样式经 <link> 注入 <head>（static/css/app.css，改 CSS 无需重启服务），
     # 主题脚本内联注入，head 解析期间同步应用主题，杜绝闪屏与布局抖动。
     # ?v= 版本号防缓存：CSS 迭代后强制浏览器拉新（否则旧样式会残留在用户端）
-    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260926b">\n' + THEME_SCRIPT
+    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260926c">\n' + THEME_SCRIPT
     try:
         combined_app = gr.mount_gradio_app(
             api_app, app, path="/",

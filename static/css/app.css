@@ -6,7 +6,7 @@
    ============================================================ */
 
 :root {
-  --vp-bg: #fafaf9;
+  --vp-bg: #ffffff;
   --vp-surface: #ffffff;          /* 卡片底 */
   --vp-surface-2: #f4f4f5;        /* hover 底 */
   --vp-border: #e5e5e3;           /* TikHub --border */
@@ -16,7 +16,7 @@
   --vp-text-mute: #9ca3af;
   --vp-fg: #1a1a1a;               /* 实心按钮底（TikHub bg-foreground） */
   --vp-fg-hover: #2d2d30;
-  --vp-invert: #fafaf9;           /* 实心底上的反色文字（TikHub text-background） */
+  --vp-invert: #ffffff;           /* 实心底上的反色文字（TikHub text-background） */
   --vp-accent: #6366f1;           /* TikHub 品牌强调色 indigo */
   --vp-accent-hover: #4f46e5;
   --vp-accent-light: #eef2ff;
@@ -30,7 +30,8 @@
   --vp-shadow-1: 0 1px 2px rgba(26, 26, 26, 0.04);
   --vp-shadow-2: 0 8px 24px rgba(26, 26, 26, 0.06);
   --vp-container: 1200px;
-  --vp-nav-bg: rgba(250, 250, 249, 0.72);
+  --vp-nav-bg: rgba(255, 255, 255, 0.72);
+  --vp-nav-h: 64px;                   /* 吸顶导航高度，body 下沉用 */
 }
 
 html[data-theme="dark"] {
@@ -63,9 +64,11 @@ html[data-theme="dark"] { color-scheme: dark; }
 body, .gradio-container {
   background: var(--vp-bg) !important;
 }
+/* 顶部导航 position:fixed 吸顶后，正文需下沉一个导航高度，避免被遮住 */
+body { padding-top: var(--vp-nav-h); }
 
 /* Gradio 6 宿主元素 <gradio-app> 是全宽块级、自带 background:
-   var(--body-background-fill)（OS 浅色= #fafaf9，OS 深色= #0f0f11），
+   var(--body-background-fill)（OS 浅色= #ffffff，OS 深色= #0f0f11），
    且包在 .gradio-container 外面 —— 不压掉它，站内深色时两侧边距会
    显示 Gradio 的浅色底（画布透出宿主而非 body）。统一透明化，
    让 body 的 var(--vp-bg) 决定一切。 */
@@ -106,7 +109,7 @@ code, pre, .vp-section-num, .vp-help-step {
 ::selection { background: rgba(26, 26, 26, 0.14); }
 html[data-theme="dark"] ::selection { background: rgba(250, 250, 249, 0.22); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 8px; border: 2px solid #fafaf9; }
+::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 8px; border: 2px solid #ffffff; }
 ::-webkit-scrollbar-thumb:hover { background: #b9b9c1; }
 ::-webkit-scrollbar-track { background: transparent; }
 html[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #3f3f46; border-color: #0c0c10; }
@@ -120,8 +123,8 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #52525b; }
 
 /* ============ 顶部导航（照抄 TikHub：透明起始，滚动后毛玻璃 + 细边框） ============ */
 .vp-nav {
-  position: sticky; top: 0; z-index: 60;
-  margin: 0 -24px; padding: 0 24px;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 60;
+  padding: 0 24px;
   background: transparent;
   border-bottom: 1px solid transparent;
   transition: background-color .3s ease, border-color .3s ease;
@@ -135,7 +138,8 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #52525b; }
   max-width: var(--vp-container); margin: 0 auto;
   height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
 }
-@media (max-width: 640px) { .vp-nav { margin: 0 -12px; padding: 0 12px; } }
+@media (max-width: 1080px) { .vp-nav { padding: 0 16px; } }
+@media (max-width: 640px) { .vp-nav { padding: 0 12px; } }
 
 .vp-nav-left { display: flex; align-items: center; }
 /* text-decoration 需 !important：Gradio 的 `.gradio-container a` 比单类选择器更高，
@@ -558,6 +562,7 @@ html[data-theme="dark"] .vp-warn {
 }
 
 @media (max-width: 640px) {
+  :root { --vp-nav-h: 58px; }
   .vp-nav-inner { height: 58px; }
   .vp-cta-pill { padding: 0 12px; font-size: 12px; }
   .vp-login-link { display: none; }
@@ -692,8 +697,8 @@ html[data-theme="dark"] .status-box textarea {
    （与 build_glass_theme 保持一致）；本站深色时统一为 --vp-bg。
    ============================================================ */
 html[data-theme="light"] body.dark {
-  --body-background-fill: #fafaf9;
-  --background-fill-primary: #fafaf9;
+  --body-background-fill: #ffffff;
+  --background-fill-primary: #ffffff;
   --background-fill-secondary: #f4f4f5;
   --block-background-fill: #ffffff;
   --block-border-color: #e9e9ec;
