@@ -61,6 +61,15 @@ html[data-theme="dark"] {
 html { color-scheme: light; }
 html[data-theme="dark"] { color-scheme: dark; }
 
+/* ---------- 主题切换过渡（vpToggleTheme 临时挂 html.vp-anim，420ms 后移除） ----------
+   只在切换瞬间给所有元素挂 transition，实现整体丝滑淡入淡出；
+   平时不挂，避免常驻全局 transition 拖慢 hover 等微交互。 */
+html.vp-anim, html.vp-anim *, html.vp-anim *::before, html.vp-anim *::after {
+  transition: background-color .32s ease, color .32s ease, border-color .32s ease,
+              box-shadow .32s ease, fill .32s ease, stroke .32s ease,
+              outline-color .32s ease !important;
+}
+
 body, .gradio-container {
   background: var(--vp-bg) !important;
 }
@@ -647,8 +656,8 @@ html[data-theme="dark"] .gradio-container {
   --border-color-primary: #26262e;
   --panel-background-fill: #17171d;
   --panel-border-color: #26262e;
-  --input-background-fill: #131318;
-  --input-background-fill-focus: #131318;
+  --input-background-fill: #17171d;
+  --input-background-fill-focus: #17171d;
   --input-border-color: #32323a;
   --input-border-color-focus: #f2f2f0;
   --input-shadow-focus: 0 0 0 3px rgba(250, 250, 249, 0.14);
@@ -658,7 +667,7 @@ html[data-theme="dark"] .gradio-container {
   --button-secondary-background-fill: #1e1e26;
   --button-secondary-background-fill-hover: #26262e;
   --button-secondary-border-color: #3f3f46;
-  --checkbox-background-color: #131318;
+  --checkbox-background-color: #17171d;
   --checkbox-background-color-selected: #f2f2f0;
   --checkbox-border-color: #3f3f46;
   --checkbox-border-color-selected: #f2f2f0;
@@ -680,6 +689,28 @@ html[data-theme="dark"] .gradio-container .panel {
   box-shadow: none !important;
 }
 
+/* ============================================================
+   浅色模式：组件层同步铺平（修复 OS 浅色下 .form/.block 透出
+   Gradio 默认灰底 rgb(233,233,236)，与纯白画布颜色不均）
+   ============================================================ */
+html[data-theme="light"] .gradio-container {
+  --background-fill-secondary: #ffffff;
+  --block-background-fill: #ffffff;
+  --block-background-fill-hover: #f4f4f5;
+  --panel-background-fill: #ffffff;
+  --panel-border-color: var(--vp-border);
+  --block-border-color: var(--vp-border);
+  --border-color-primary: var(--vp-border);
+}
+html[data-theme="light"] .gradio-container .block,
+html[data-theme="light"] .gradio-container .wrap,
+html[data-theme="light"] .gradio-container .form,
+html[data-theme="light"] .gradio-container .panel {
+  background: var(--vp-bg) !important;
+  border-color: var(--vp-border) !important;
+  box-shadow: none !important;
+}
+
 /* 媒体组件占位 */
 html[data-theme="dark"] .gradio-container .image-container,
 html[data-theme="dark"] .gradio-container .image-wrap,
@@ -688,13 +719,13 @@ html[data-theme="dark"] .gradio-container .video-wrap,
 html[data-theme="dark"] .gradio-container [data-testid="image"],
 html[data-theme="dark"] .gradio-container [data-testid="video"],
 html[data-theme="dark"] .gradio-container [data-testid="file-component"] {
-  background: #131318 !important;
+  background: #17171d !important;
   border-color: #26262e !important;
 }
 
 /* 状态框 */
 html[data-theme="dark"] .status-box textarea {
-  background: #131318 !important;
+  background: #17171d !important;
   color: #f2f2f0 !important;
 }
 

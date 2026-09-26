@@ -109,18 +109,24 @@ def _vp_session_from_request(request):
     return auth_db.get_session_user(token)
 
 
-# Gradio 按钮前置 JS：匿名用户弹登录框；已登录则透传输入值。
-# 用箭头函数 + rest 参数（官方文档形式），三种 js 解析方式都安全；
+# Gradio 按钮前置 JS：匿名用户记录「待续动作」并弹登录框；已登录则透传输入值。
+# 登录成功后 vpSubmitLogin 读取 window.__vp_pending 自动续点原按钮——
+# 用户先粘贴链接再点「解析视频」→ 弹窗登录 → 自动继续解析，链接不丢、不用重点。
 # 不依赖 return false 取消语义（各版本行为不一），未登录时仍返回原输入，
-# 由后端 _vp_session_from_request 兜底拦截并返回「请先登录」提示，避免输入数量不匹配。
-GATE_JS = """
+# 由后端 _vp_session_from_request 兜底拦截，避免输入数量不匹配。
+def _gate_js(action: str) -> str:
+    return """
 (...args) => {
   if (!window.__vp_logged_in) {
+    window.__vp_pending = '__ACTION__';
     if (window.vpOpenLoginModal) window.vpOpenLoginModal();
   }
   return args;
 }
-"""
+""".replace("__ACTION__", action)
+
+
+GATE_JS = _gate_js("parse")
 
 
 # ==================== URL 处理 ====================
@@ -395,7 +401,7 @@ def parse_video(url: str, platform: str, request: gr.Request = None) -> Tuple[st
         (status_message, info_bar_html, cover_update, video_url, guide_html)
     """
     if not _vp_session_from_request(request):
-        return "🔒 请先登录后再使用此功能", _info_bar_html("请先登录", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML
+        return "🔒 请先登录后再使用此功能 / Please sign in first", _info_bar_html("请先登录 / Please sign in", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML
     import asyncio
     status, info, cover, video_url, guide = asyncio.run(_async_parse_video(url, platform))
     if cover:
@@ -464,7 +470,7 @@ def play_video(progress=gr.Progress(), request: gr.Request = None) -> Tuple[str,
         (video_update, status_message)
     """
     if not _vp_session_from_request(request):
-        return gr.update(visible=False), "🔒 请先登录后再使用此功能"
+        return gr.update(visible=False), "🔒 请先登录后再使用此功能 / Please sign in first"
     import asyncio
     video_path, status = asyncio.run(_async_play_video(progress))
     if video_path:
@@ -606,7 +612,7 @@ def download_video(progress=gr.Progress(), request: gr.Request = None) -> Tuple[
         (file_update, status_message)
     """
     if not _vp_session_from_request(request):
-        return gr.update(visible=False), "🔒 请先登录后再使用此功能"
+        return gr.update(visible=False), "🔒 请先登录后再使用此功能 / Please sign in first"
     import asyncio
     filepath, status = asyncio.run(_async_download_video(progress))
     if filepath:
@@ -712,7 +718,7 @@ def extract_video_content(multi_speaker: bool = False, progress=gr.Progress(), r
         (content_text, status_message)
     """
     if not _vp_session_from_request(request):
-        return "🔒 请先登录后再使用此功能", "请先登录后再使用此功能"
+        return "🔒 请先登录后再使用此功能 / Please sign in first", "🔒 请先登录后再使用此功能 / Please sign in first"
     global current_video_info
 
     if not current_video_info:
@@ -821,7 +827,13 @@ THEME_SCRIPT = """
     if (lbl) { lbl.textContent = (t === 'dark') ? '深色' : '浅色'; }
   }
   function vpToggleTheme() {
+    // 切换时给 <html> 挂临时动画类（CSS: html.vp-anim * 统一过渡），
+    // 400ms 后移除，避免常驻全局 transition 拖慢 hover 等微交互。
+    var root = document.documentElement;
+    root.classList.add('vp-anim');
     vpApplyTheme(vpTheme() === 'dark' ? 'light' : 'dark');
+    clearTimeout(vpToggleTheme._t);
+    vpToggleTheme._t = setTimeout(function () { root.classList.remove('vp-anim'); }, 420);
   }
   function vpScrollTo(sel) {
     var el = document.querySelector(sel);
@@ -996,6 +1008,7 @@ THEME_SCRIPT = """
     if (m) m.style.display = 'none';
     var msg = document.getElementById('vp-modal-msg');
     if (msg) { msg.textContent = ''; msg.className = 'vp-modal-msg'; }
+    window.__vp_pending = null;   // 用户主动关弹窗 → 丢弃待续动作
   };
   window.vpSubmitLogin = function () {
     var u = (document.getElementById('vp-modal-user') || {}).value || '';
@@ -1023,6 +1036,13 @@ THEME_SCRIPT = """
           link.innerHTML = '<span class="vp-user-dot"></span>' + String(o.d.data.username).replace(/[<>&]/g, '');
         }
         window.vpCloseLoginModal();
+        // 登录成功 → 自动继续登录前被拦下的动作（解析/播放/下载/提取），
+        // 用户粘贴的链接保持不变，无需再点一次。
+        var pend = window.__vp_pending; window.__vp_pending = null;
+        if (pend) {
+          var pb = document.getElementById('vp_btn_' + pend);
+          if (pb) { setTimeout(function () { pb.click(); }, 350); }
+        }
       } else if (msg) {
         msg.textContent = (o.d && o.d.retdesc) ? o.d.retdesc : '登录失败';
         msg.className = 'vp-modal-msg err';
@@ -1153,7 +1173,7 @@ def build_glass_theme():
     _vars = {
         "body_background_fill": "#ffffff",
         "background_fill_primary": "#ffffff",
-        "background_fill_secondary": "#f4f4f5",
+        "background_fill_secondary": "#ffffff",
         "block_background_fill": "#ffffff",
         "block_border_color": "#e9e9ec",
         "block_title_text_color": "#1a1a1a",
@@ -1440,21 +1460,21 @@ def create_app():
 
         play_btn.click(
             fn=play_video,
-            js=GATE_JS,
+            js=_gate_js("play"),
             inputs=[],
             outputs=[video_output, status_output]
         )
 
         download_btn.click(
             fn=download_video,
-            js=GATE_JS,
+            js=_gate_js("download"),
             inputs=[],
             outputs=[download_output, status_output]
         )
 
         extract_btn.click(
             fn=extract_video_content,
-            js=GATE_JS,
+            js=_gate_js("extract"),
             inputs=[multi_speaker_chk],
             outputs=[content_output, status_output]
         )
@@ -1690,7 +1710,7 @@ if __name__ == "__main__":
     # 样式经 <link> 注入 <head>（static/css/app.css，改 CSS 无需重启服务），
     # 主题脚本内联注入，head 解析期间同步应用主题，杜绝闪屏与布局抖动。
     # ?v= 版本号防缓存：CSS 迭代后强制浏览器拉新（否则旧样式会残留在用户端）
-    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260926e">\n' + THEME_SCRIPT
+    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260926f">\n' + THEME_SCRIPT
     try:
         combined_app = gr.mount_gradio_app(
             api_app, app, path="/",
