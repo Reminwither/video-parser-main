@@ -1,0 +1,91 @@
+name: Deploy video-parser admin
+
+"on":
+  push:
+    branches: [master, main]
+    paths:
+      - 'admin/**'
+      - '.github/workflows/deploy-admin.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: SSH deploy admin (7861)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Transfer Git bundle to server
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_PRIVATE_KEY"
+          git bundle create deploy.bundle HEAD
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/video-parser-deploy"
+          chmod 600 "$HOME/.ssh/video-parser-deploy"
+          printf '%s\n' '110.40.138.167 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJYu1mauq0iI3U/9HflbLGyyd7K+qTNybC1xFOS8r/WH' >> "$HOME/.ssh/known_hosts"
+          scp -i "$HOME/.ssh/video-parser-deploy" -o StrictHostKeyChecking=yes deploy.bundle root@110.40.138.167:/opt/video-parser-admin/deploy.bundle
+
+      - name: Deploy over SSH ( clone + build + run on 7861 )
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 110.40.138.167
+          username: root
+          port: 22
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 20m
+          envs: APP_PASS
+          script: |
+            set -e
+            test -n "$APP_PASS" || { echo "APP_PASS secret is required"; exit 1; }
+            echo "==> [1/4] 导入提交到 /opt/video-parser-admin"
+            mkdir -p /opt/video-parser-admin
+            cd /opt/video-parser-admin
+            if [ ! -d .git ]; then
+              git init -q
+              git config user.email "deploy@local"
+              git config user.name "deploy"
+              git remote add origin ./deploy.bundle || true
+            fi
+            git fetch ./deploy.bundle HEAD
+            git reset --hard FETCH_HEAD
+            rm -f deploy.bundle
+
+            echo "==> [2/4] 构建后台镜像（tuna pip 源）"
+            docker build -t video-parser-admin /opt/video-parser-admin/admin
+
+            echo "==> [3/4] 停掉旧容器"
+            docker stop video-parser-admin || true
+            docker rm video-parser-admin || true
+
+            echo "==> [4/4] 启动（7861，只读挂载主站 /opt/video-parser 数据）"
+            docker run -d \
+              --name video-parser-admin \
+              --restart unless-stopped \
+              -p 7861:7861 \
+              -e AUTH_DB_PATH=/opt/video-parser/data/auth.db \
+              -e ASSETS_DIR=/opt/video-parser/downloads \
+              -e LOGS_DIR=/opt/video-parser/logs \
+              -e APP_USER=admin \
+              -e APP_PASS \
+              -v /opt/video-parser:/opt/video-parser:ro \
+              video-parser-admin:latest
+
+            for attempt in 1 2 3 4 5 6 7 8; do
+              if curl -fsS http://127.0.0.1:7861/health >/dev/null; then
+                break
+              fi
+              if [ "$attempt" -eq 8 ]; then
+                echo "Health check failed"
+                exit 1
+              fi
+              sleep 5
+            done
+            echo "==> ADMIN DEPLOY DONE $(date)"
+        env:
+          APP_PASS: ${{ secrets.APP_PASS }}

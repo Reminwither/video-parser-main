@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block page_title %}资产记录库{% endblock %}
+{% block title %}资产记录库{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">下载目录资产（downloads/）</h3>
+    <div class="ms-auto">
+      <form class="d-flex gap-2" method="get" action="/assets">
+        <input type="text" name="q" class="form-control" placeholder="按文件名检索…" value="{{ query }}">
+        <select name="ext" class="form-select" style="width:auto">
+          <option value="">全部类型</option>
+          <option value=".mp4">视频 .mp4</option>
+          <option value=".webm">视频 .webm</option>
+          <option value=".json">.json</option>
+          <option value=".md">.md</option>
+          <option value=".srt">.srt/.vtt</option>
+        </select>
+        <button type="submit" class="btn btn-primary">检索</button>
+      </form>
+    </div>
+  </div>
+  <div class="card-body">
+    {% if truncated %}
+    <div class="alert alert-warning">结果超过 {{ 500 }} 条，已截断；请使用更精确的关键词检索。</div>
+    {% endif %}
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <thead><tr><th>类型</th><th>文件名</th><th>大小</th><th>修改时间</th><th></th></tr></thead>
+        <tbody>
+        {% for a in assets %}
+          <tr>
+            <td>
+              {% if a.kind == "video" %}<i class="ti ti-movie text-red"></i>
+              {% elif a.kind == "doc" %}<i class="ti ti-file-text text-blue"></i>
+              {% else %}<i class="ti ti-file text-muted"></i>{% endif %}
+              <span class="text-muted">{{ a.ext }}</span>
+            </td>
+            <td class="text-truncate" style="max-width:420px" title="{{ a.rel }}">{{ a.rel }}</td>
+            <td class="text-muted">{{ a.size | human }}</td>
+            <td class="text-muted">{{ a.mtime }}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-ghost-secondary" href="/asset/{{ a.rel }}">查看/下载</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="text-muted text-center">无匹配资产（downloads/ 目录可能为空或未挂载）</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

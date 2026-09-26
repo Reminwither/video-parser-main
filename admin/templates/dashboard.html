@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block page_title %}运营看板{% endblock %}
+{% block title %}运营看板{% endblock %}
+{% block content %}
+{% if s.error %}
+<div class="alert alert-danger">读取数据失败：{{ s.error }}</div>
+{% endif %}
+
+<div class="row row-deck row-cards">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card card-sm">
+      <div class="card-body">
+        <div class="row align-items-center">
+          <div class="col-auto"><i class="ti ti-users fs-2 text-blue"></i></div>
+          <div class="col">
+            <div class="font-weight-medium"><a href="/users">{{ s.total_users }} 个账号</a></div>
+            <div class="text-muted">注册用户总数</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card card-sm">
+      <div class="card-body">
+        <div class="row align-items-center">
+          <div class="col-auto"><i class="ti ti-shield-check fs-2 text-green"></i></div>
+          <div class="col">
+            <div class="font-weight-medium">{{ s.admin_count }} 个管理员</div>
+            <div class="text-muted">is_admin = 1</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card card-sm">
+      <div class="card-body">
+        <div class="row align-items-center">
+          <div class="col-auto"><i class="ti ti-activity fs-2 text-orange"></i></div>
+          <div class="col">
+            <div class="font-weight-medium">{{ s.active_sessions }} 个活跃会话</div>
+            <div class="text-muted">未过期登录会话</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card card-sm">
+      <div class="card-body">
+        <div class="row align-items-center">
+          <div class="col-auto"><i class="ti ti-folders fs-2 text-cyan"></i></div>
+          <div class="col">
+            <div class="font-weight-medium"><a href="/assets">{{ s.asset_count }} 个资产</a></div>
+            <div class="text-muted">{{ s.asset_size_human }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row row-cards mt-2">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">最近活跃会话</h3></div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover card-table">
+            <thead><tr><th>用户</th><th>IP</th><th>创建</th><th>过期</th><th>UA</th></tr></thead>
+            <tbody>
+            {% for r in s.recent_sessions %}
+              <tr>
+                <td>{{ r.username }}</td>
+                <td class="text-muted">{{ r.ip }}</td>
+                <td>{{ r.created }}</td>
+                <td class="text-muted">{{ r.expires }}</td>
+                <td class="text-muted text-truncate" style="max-width:200px">{{ r.ua }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="text-muted text-center">暂无活跃会话</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">最近登录用户</h3></div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover card-table">
+            <thead><tr><th>用户</th><th>角色</th><th>注册</th><th>最近登录</th></tr></thead>
+            <tbody>
+            {% for u in s.recent_users %}
+              <tr>
+                <td>{{ u.username }}</td>
+                <td>{% if u.is_admin %}<span class="badge bg-green-lt">管理员</span>{% else %}<span class="badge bg-secondary-lt">用户</span>{% endif %}</td>
+                <td class="text-muted">{{ u.created }}</td>
+                <td class="text-muted">{{ u.last_login }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4" class="text-muted text-center">暂无用户</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

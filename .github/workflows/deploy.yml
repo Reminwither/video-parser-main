@@ -3,6 +3,9 @@ name: Deploy video-parser to Lighthouse
 "on":
   push:
     branches: [master, main]
+    paths-ignore:
+      - 'admin/**'
+      - '.github/workflows/deploy-admin.yml'
   workflow_dispatch:
 
 jobs:

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>管理员登录 · 视频解析工作台</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='tabler.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='tabler-icons.min.css') }}">
+</head>
+<body class="border-top-wide border-top-blue d-flex flex-column">
+  <div class="page page-center">
+    <div class="container container-tight py-4">
+      <div class="card card-md">
+        <div class="card-body">
+          <h2 class="h2 text-center mb-4">管理后台登录</h2>
+          {% if error %}
+          <div class="alert alert-danger" role="alert">{{ error }}</div>
+          {% endif %}
+          <form method="post" action="/login" autocomplete="off">
+            <div class="mb-3">
+              <label class="form-label">用户名</label>
+              <input type="text" name="username" class="form-control" placeholder="admin" autocomplete="username" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">密码</label>
+              <input type="password" name="password" class="form-control" placeholder="密码" autocomplete="current-password" required>
+            </div>
+            <div class="form-footer">
+              <button type="submit" class="btn btn-primary w-100">登 录</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="text-center text-muted mt-3">
+        视频解析工作台 · 仅限管理员访问 ·
+        <a href="http://110.40.138.167:7860/" target="_blank">返回主站</a>
+      </div>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='tabler.min.js') }}"></script>
+</body>
+</html>
