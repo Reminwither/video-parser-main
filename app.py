@@ -965,6 +965,8 @@ THEME_SCRIPT = """
   window.vpToggleTheme = vpToggleTheme;
   window.vpLogin = vpLogin;
   window.vpScrollTo = vpScrollTo;
+  window.vpToggleLang = vpToggleLang;
+  window.vpApplyLang = vpApplyLang;
   window.__vp_logged_in = false;
   // 弹窗事件在「打开时」绑定：Gradio 为异步挂载，onload 触发时弹窗可能尚未渲染进 DOM
   window.vpBindLoginModal = function () {
