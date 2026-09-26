@@ -792,14 +792,14 @@ EMPTY_GUIDE_HTML = """
       <path d="M10 9.2v5.6l5-2.8-5-2.8z" fill="currentColor"/>
     </svg>
   </div>
-  <div class="vp-empty-head">等待视频解析</div>
-  <div class="vp-empty-desc">在左侧粘贴视频链接并点击「解析视频」，即可在此生成封面与在线播放</div>
+  <div class="vp-empty-head" data-i18n="empty_head">等待视频解析</div>
+  <div class="vp-empty-desc" data-i18n="empty_desc">在左侧粘贴视频链接并点击「解析视频」，即可在此生成封面与在线播放</div>
   <div class="vp-empty-flow">
-    <span class="vp-flow-step"><i>1</i>粘贴链接</span>
+    <span class="vp-flow-step"><i>1</i><span data-i18n="empty_s1">粘贴链接</span></span>
     <span class="vp-flow-arrow">→</span>
-    <span class="vp-flow-step"><i>2</i>解析视频</span>
+    <span class="vp-flow-step"><i>2</i><span data-i18n="empty_s2">解析视频</span></span>
     <span class="vp-flow-arrow">→</span>
-    <span class="vp-flow-step"><i>3</i>AI 取证</span>
+    <span class="vp-flow-step"><i>3</i><span data-i18n="empty_s3">AI 取证</span></span>
   </div>
 </div>
 """
@@ -948,7 +948,7 @@ THEME_SCRIPT = """
           out.id = 'vp-logout-link';
           out.className = 'vp-login-link';
           out.href = '/logout';
-          out.textContent = '退出';
+          out.textContent = (vpCurLang() === 'zh') ? '退出' : 'Logout';
           cta.insertBefore(out, cta.querySelector('.vp-cta-pill'));
         }
       } catch (e) {}
@@ -1220,9 +1220,9 @@ def create_app():
                   </a>
                 </div>
                 <div class="vp-nav-links">
-                  <a href="javascript:void(0)" onclick="vpScrollTo('.vp-ops')">视频解析</a>
-                  <a href="javascript:void(0)" onclick="vpScrollTo('.vp-report')">AI 分析</a>
-                  <a href="javascript:void(0)" onclick="vpScrollTo('.vp-help')">使用指南</a>
+                  <a href="javascript:void(0)" onclick="vpScrollTo('.vp-ops')"><span data-i18n="nav_parse">视频解析</span></a>
+                  <a href="javascript:void(0)" onclick="vpScrollTo('.vp-report')"><span data-i18n="nav_ai">AI 分析</span></a>
+                  <a href="javascript:void(0)" onclick="vpScrollTo('.vp-help')"><span data-i18n="nav_help">使用指南</span></a>
                 </div>
                 <div class="vp-nav-right">
                   <button class="vp-theme-round" id="vp-theme-btn" type="button" onclick="vpToggleTheme()" title="切换深色 / 浅色模式" aria-label="切换深色 / 浅色模式">
@@ -1264,9 +1264,9 @@ def create_app():
         gr.HTML(
             """
             <section class="vp-hero">
-              <div class="vp-hero-eyebrow"><span class="vp-hero-dot"></span>视频智能分析平台</div>
-              <h1 class="vp-hero-title">解析 · 下载 · <span class="vp-hero-accent">AI 取证</span></h1>
-              <p class="vp-hero-sub">粘贴抖音、哔哩哔哩、小红书、快手、好看视频链接，在线播放、下载无水印原画，并按时间轴生成多模态证据报告。</p>
+              <div class="vp-hero-eyebrow"><span class="vp-hero-dot"></span><span data-i18n="hero_eyebrow">视频智能分析平台</span></div>
+              <h1 class="vp-hero-title"><span data-i18n="hero_title_a">解析 · 下载 · </span><span class="vp-hero-accent" data-i18n="hero_title_b">AI 取证</span></h1>
+              <p class="vp-hero-sub" data-i18n="hero_sub">粘贴抖音、哔哩哔哩、小红书、快手、好看视频链接，在线播放、下载无水印原画，并按时间轴生成多模态证据报告。</p>
             </section>
             """
         )
@@ -1290,16 +1290,17 @@ def create_app():
         with gr.Row(elem_classes=["vp-main"]):
             # ---------- 左栏：操作台（紧凑，主 CTA 独立全宽） ----------
             with gr.Column(scale=4, elem_classes=["vp-card", "vp-ops"]):
-                gr.HTML('<div class="vp-section-label"><span class="vp-section-num">01</span>解析视频</div>')
+                gr.HTML('<div class="vp-section-label"><span class="vp-section-num">01</span><span data-i18n="sec_parse">解析视频</span></div>')
                 url_input = gr.Textbox(
                     label="视频链接",
                     placeholder="粘贴抖音 / B站 / 小红书 / 快手 / 好看视频分享链接…",
                     lines=3,
+                    elem_id="vp_in_url",
                     elem_classes=["vp-url"]
                 )
 
                 # 主 CTA：紧跟输入框，独立全宽，唯一视觉主导（黑底白字，克制的 TikHub 语言）
-                parse_btn = gr.Button("解析视频", variant="primary", size="lg", elem_classes=["vp-cta"])
+                parse_btn = gr.Button("解析视频", variant="primary", size="lg", elem_classes=["vp-cta"], elem_id="vp_btn_parse")
 
                 # 信息条：状态点 + 平台徽章 + 标题
                 title_bar = gr.HTML(INFO_BAR_EMPTY)
@@ -1321,17 +1322,18 @@ def create_app():
                         choices=["自动检测", "抖音", "哔哩哔哩", "小红书", "快手", "好看视频"],
                         value="自动检测",
                         interactive=True,
+                        elem_id="vp_dd_platform",
                         elem_classes=["vp-platform-select"],
                         scale=1,
                     )
-                    clear_btn = gr.Button("清空", variant="secondary", size="lg", scale=1, elem_classes=["vp-ghost"])
+                    clear_btn = gr.Button("清空", variant="secondary", size="lg", scale=1, elem_classes=["vp-ghost"], elem_id="vp_btn_clear")
 
                 gr.HTML('<div class="vp-divider"></div>')
 
                 # 播放 / 下载（玻璃次级按钮）
                 with gr.Row():
-                    play_btn = gr.Button("在线播放", variant="secondary", elem_classes=["vp-secondary"])
-                    download_btn = gr.Button("下载视频", variant="secondary", elem_classes=["vp-secondary"])
+                    play_btn = gr.Button("在线播放", variant="secondary", elem_classes=["vp-secondary"], elem_id="vp_btn_play")
+                    download_btn = gr.Button("下载视频", variant="secondary", elem_classes=["vp-secondary"], elem_id="vp_btn_download")
 
                 # 视频内容提取（多人转写开关 + AI 分析按钮）
                 with gr.Row(equal_height=True):
@@ -1340,9 +1342,10 @@ def create_app():
                         value=False,
                         interactive=speaker_avail,
                         info=speaker_info,
+                        elem_id="vp_chk_speaker",
                         elem_classes=["vp-toggle"],
                     )
-                    extract_btn = gr.Button("AI 时间轴证据分析", variant="primary", elem_classes=["vp-extract"])
+                    extract_btn = gr.Button("AI 时间轴证据分析", variant="primary", elem_classes=["vp-extract"], elem_id="vp_btn_extract")
 
                 # 状态反馈（信息流底部）
                 status_output = gr.Textbox(
@@ -1350,12 +1353,13 @@ def create_app():
                     lines=1,
                     max_lines=3,
                     interactive=False,
+                    elem_id="vp_out_status",
                     elem_classes=["status-box"]
                 )
 
             # ---------- 右栏：主预览（唯一视觉锚点） ----------
             with gr.Column(scale=6, elem_classes=["vp-card", "vp-preview"]):
-                gr.HTML('<div class="vp-section-label"><span class="vp-section-num">02</span>预览</div>')
+                gr.HTML('<div class="vp-section-label"><span class="vp-section-num">02</span><span data-i18n="sec_preview">预览</span></div>')
                 # 空态引导（解析前展示，解析成功后由事件输出空串隐藏）
                 guide_html = gr.HTML(EMPTY_GUIDE_HTML)
 
@@ -1364,6 +1368,7 @@ def create_app():
                     label="在线播放",
                     height=440,
                     visible=False,
+                    elem_id="vp_vid",
                     elem_classes=["vp-video"]
                 )
 
@@ -1373,6 +1378,7 @@ def create_app():
                         label="视频封面",
                         height=190,
                         visible=False,
+                        elem_id="vp_img_cover",
                         elem_classes=["vp-cover"]
                     )
                     download_output = gr.File(
@@ -1382,7 +1388,7 @@ def create_app():
 
         # ---------- 全宽：AI 取证报告（Markdown Dashboard，章节 + 时间轴表格） ----------
         with gr.Column(elem_classes=["vp-card", "vp-card-wide"]):
-            gr.HTML('<div class="vp-section-label"><span class="vp-section-num">03</span>AI 取证报告</div>')
+            gr.HTML('<div class="vp-section-label"><span class="vp-section-num">03</span><span data-i18n="sec_report">AI 取证报告</span></div>')
             content_output = gr.Markdown(
                 value=REPORT_PLACEHOLDER,
                 sanitize_html=True,
