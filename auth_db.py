@@ -39,8 +39,11 @@ PBKDF2_ITERATIONS = 240_000
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")
 
-# SQLite 跨线程：每线程独立连接（check_same_thread=False + 自旋锁）
+# SQLite 跨线程：每线程独立连接（threading.local 保存，避免
+# "SQLite objects created in a thread" —— 曾把连接缓存在函数对象上导致
+# 登录后的业务线程直接抛错）
 _DB_LOCK = threading.Lock()
+_DB_LOCAL = threading.local()
 
 
 def _now_iso() -> str:
@@ -64,11 +67,13 @@ def _connect() -> sqlite3.Connection:
 
 
 def _db() -> sqlite3.Connection:
-    """线程局部连接（uvicorn 默认单进程多线程）。"""
-    conn = getattr(_db, "_conn", None)
+    """线程局部连接（uvicorn 默认单进程多线程）。
+    连接必须存 threading.local，而不是函数属性——函数属性是全线程共享的，
+    非创建线程使用会抛 'SQLite objects created in a thread' 错。"""
+    conn = getattr(_DB_LOCAL, "conn", None)
     if conn is None:
         conn = _connect()
-        _db._conn = conn
+        _DB_LOCAL.conn = conn
     return conn
 
 
