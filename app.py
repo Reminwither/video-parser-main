@@ -871,9 +871,25 @@ THEME_SCRIPT = """
   window.vpLogin = vpLogin;
   window.vpScrollTo = vpScrollTo;
   window.__vp_logged_in = false;
-  window.vpOpenLoginModal = function () {
+  // 弹窗事件在「打开时」绑定：Gradio 为异步挂载，onload 触发时弹窗可能尚未渲染进 DOM
+  window.vpBindLoginModal = function () {
     var m = document.getElementById('vp-login-modal');
-    if (m) { m.style.display = 'flex'; var p = document.getElementById('vp-modal-pass'); if (p) p.focus(); }
+    if (!m || m.getAttribute('data-vp-bound') === '1') return m;
+    var close = m.querySelector('#vp-modal-close');
+    if (close) close.onclick = window.vpCloseLoginModal;
+    m.onclick = function (e) { if (e.target === m) window.vpCloseLoginModal(); };
+    var submit = m.querySelector('#vp-modal-submit');
+    if (submit) submit.onclick = window.vpSubmitLogin;
+    var pass = m.querySelector('#vp-modal-pass');
+    if (pass) pass.addEventListener('keydown', function (e) { if (e.key === 'Enter') window.vpSubmitLogin(); });
+    var user = m.querySelector('#vp-modal-user');
+    if (user) user.addEventListener('keydown', function (e) { if (e.key === 'Enter') window.vpSubmitLogin(); });
+    m.setAttribute('data-vp-bound', '1');
+    return m;
+  };
+  window.vpOpenLoginModal = function () {
+    var m = window.vpBindLoginModal();
+    if (m) { m.style.display = 'flex'; var p = document.getElementById('vp-modal-pass'); if (p) { try { p.focus(); } catch (e) {} } }
   };
   window.vpCloseLoginModal = function () {
     var m = document.getElementById('vp-login-modal');
@@ -916,22 +932,13 @@ THEME_SCRIPT = """
       if (msg) { msg.textContent = '网络错误，请重试'; msg.className = 'vp-modal-msg err'; }
     });
   };
-  window.addEventListener('load', function () {
-    var close = document.getElementById('vp-modal-close');
-    if (close) close.onclick = window.vpCloseLoginModal;
-    var mask = document.getElementById('vp-login-modal');
-    if (mask) mask.onclick = function (e) { if (e.target === mask) window.vpCloseLoginModal(); };
-    var submit = document.getElementById('vp-modal-submit');
-    if (submit) submit.onclick = window.vpSubmitLogin;
-    var pass = document.getElementById('vp-modal-pass');
-    if (pass) pass.addEventListener('keydown', function (e) { if (e.key === 'Enter') window.vpSubmitLogin(); });
-    var user = document.getElementById('vp-modal-user');
-    if (user) user.addEventListener('keydown', function (e) { if (e.key === 'Enter') window.vpSubmitLogin(); });
-  });
+  window.addEventListener('load', function () { window.vpBindLoginModal(); });
   window.addEventListener('load', vpSyncLabel);
   window.addEventListener('load', vpInitAuthUI);
   setTimeout(vpSyncLabel, 600);
   setTimeout(vpInitAuthUI, 400);
+  setTimeout(vpBindLoginModal, 800);
+  setTimeout(vpBindLoginModal, 2500);
 
   // TikHub 式导航：透明起始，滚动 >8px 后加毛玻璃底 + 细边框（CSS .vp-nav-scrolled）
   var _nav = null;
@@ -1124,6 +1131,25 @@ def create_app():
                   </a>
                   <button class="vp-cta-pill" type="button" onclick="vpScrollTo('.vp-url')">开始使用</button>
                 </div>
+              </div>
+            </div>
+            """
+        )
+
+        # ===== 登录弹窗（访客可浏览；点功能按钮时弹出。随 gr.HTML 落入 .gradio-container，CSS 才生效） =====
+        gr.HTML(
+            """
+            <div id="vp-login-modal" class="vp-modal-mask">
+              <div class="vp-modal-card">
+                <button id="vp-modal-close" class="vp-modal-x" type="button" aria-label="关闭">&times;</button>
+                <div class="vp-modal-brand"><span class="vp-modal-logo">VA</span>VidAI</div>
+                <div class="vp-modal-title">登录工作台</div>
+                <div class="vp-modal-sub">视频解析 · AI 分析 · 多模态取证</div>
+                <input id="vp-modal-user" class="vp-modal-input" type="text" placeholder="用户名" autocomplete="username" />
+                <input id="vp-modal-pass" class="vp-modal-input" type="password" placeholder="密码" autocomplete="current-password" />
+                <button id="vp-modal-submit" class="vp-modal-btn" type="button">登 录</button>
+                <div id="vp-modal-msg" class="vp-modal-msg"></div>
+                <div class="vp-modal-foot">没有账号？<a href="/register">立即注册</a></div>
               </div>
             </div>
             """
@@ -1548,7 +1574,7 @@ if __name__ == "__main__":
     # 样式经 <link> 注入 <head>（static/css/app.css，改 CSS 无需重启服务），
     # 主题脚本内联注入，head 解析期间同步应用主题，杜绝闪屏与布局抖动。
     # ?v= 版本号防缓存：CSS 迭代后强制浏览器拉新（否则旧样式会残留在用户端）
-    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260926a">\n' + THEME_SCRIPT
+    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260926b">\n' + THEME_SCRIPT
     try:
         combined_app = gr.mount_gradio_app(
             api_app, app, path="/",
