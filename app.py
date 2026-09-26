@@ -89,6 +89,40 @@ def get_auth_headers(client_id: str = "gradio-client"):
     }
 
 
+# ==================== 会话校验（供功能按钮后端兜底） ====================
+
+def _vp_session_from_request(request):
+    """从 gr.Request 取 vp_session cookie 并校验，返回 user dict 或 None。
+
+    匿名用户直接访问 Gradio predict 接口在中间件层是放行的，
+    因此真正的访问边界放在每个功能函数里：未登录返回 None，
+    函数据此返回「请先登录」提示而不执行实际工作。
+    """
+    if request is None:
+        return None
+    starlette_req = getattr(request, "request", None)
+    if starlette_req is None:
+        return None
+    token = starlette_req.cookies.get("vp_session", "")
+    if not token:
+        return None
+    return auth_db.get_session_user(token)
+
+
+# Gradio 按钮前置 JS：匿名用户弹登录框；已登录则透传输入值。
+# 用箭头函数 + rest 参数（官方文档形式），三种 js 解析方式都安全；
+# 不依赖 return false 取消语义（各版本行为不一），未登录时仍返回原输入，
+# 由后端 _vp_session_from_request 兜底拦截并返回「请先登录」提示，避免输入数量不匹配。
+GATE_JS = """
+(...args) => {
+  if (!window.__vp_logged_in) {
+    if (window.vpOpenLoginModal) window.vpOpenLoginModal();
+  }
+  return args;
+}
+"""
+
+
 # ==================== URL 处理 ====================
 
 def clean_url(url: str) -> str:
@@ -353,13 +387,15 @@ client = VideoClient()
 current_video_info = {}
 
 
-def parse_video(url: str, platform: str) -> Tuple[str, str, str, str, str]:
+def parse_video(url: str, platform: str, request: gr.Request = None) -> Tuple[str, str, str, str, str]:
     """
     解析视频
 
     Returns:
         (status_message, info_bar_html, cover_update, video_url, guide_html)
     """
+    if not _vp_session_from_request(request):
+        return "🔒 请先登录后再使用此功能", _info_bar_html("请先登录", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML
     import asyncio
     status, info, cover, video_url, guide = asyncio.run(_async_parse_video(url, platform))
     if cover:
@@ -420,13 +456,15 @@ async def _async_parse_video(url: str, platform: str) -> Tuple[str, str, str, st
         return f"解析失败: {message}", _info_bar_html("解析失败：" + message, "", ok=False), None, "", EMPTY_GUIDE_HTML
 
 
-def play_video(progress=gr.Progress()) -> Tuple[str, str]:
+def play_video(progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str]:
     """
     播放视频（先下载到本地缓存再播放）
 
     Returns:
         (video_update, status_message)
     """
+    if not _vp_session_from_request(request):
+        return gr.update(visible=False), "🔒 请先登录后再使用此功能"
     import asyncio
     video_path, status = asyncio.run(_async_play_video(progress))
     if video_path:
@@ -560,14 +598,14 @@ async def _async_play_video(progress) -> Tuple[str, str]:
             return None, f"加载失败: {str(e)}"
 
 
-def download_video(gate, progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str]:
+def download_video(progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str]:
     """
     下载视频
 
     Returns:
         (file_update, status_message)
     """
-    if gate == "__VP_CANCEL__" or not _vp_session_from_request(request):
+    if not _vp_session_from_request(request):
         return gr.update(visible=False), "🔒 请先登录后再使用此功能"
     import asyncio
     filepath, status = asyncio.run(_async_download_video(progress))
@@ -666,13 +704,15 @@ async def _async_download_video(progress) -> Tuple[str, str]:
             return None, msg
 
 
-def extract_video_content(multi_speaker: bool = False, progress=gr.Progress()) -> Tuple[str, str]:
+def extract_video_content(multi_speaker: bool = False, progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str]:
     """
     按时间轴建立多模态证据后生成视频分析。
 
     Returns:
         (content_text, status_message)
     """
+    if not _vp_session_from_request(request):
+        return "🔒 请先登录后再使用此功能", "请先登录后再使用此功能"
     global current_video_info
 
     if not current_video_info:
@@ -800,6 +840,7 @@ THEME_SCRIPT = """
         var d = JSON.parse(xhr.responseText);
         var name = d && d.data && d.data.username;
         if (!name) return;
+        window.__vp_logged_in = true;
         var link = document.querySelector('.vp-login-link');
         if (link) {
           link.removeAttribute('onclick');
@@ -1250,6 +1291,7 @@ def create_app():
         # 事件绑定
         parse_btn.click(
             fn=parse_video,
+            js=GATE_JS,
             inputs=[url_input, platform_dropdown],
             outputs=[status_output, title_bar, cover_output, video_url_state, guide_html]
         )
@@ -1263,12 +1305,14 @@ def create_app():
 
         download_btn.click(
             fn=download_video,
+            js=GATE_JS,
             inputs=[],
             outputs=[download_output, status_output]
         )
 
         extract_btn.click(
             fn=extract_video_content,
+            js=GATE_JS,
             inputs=[multi_speaker_chk],
             outputs=[content_output, status_output]
         )

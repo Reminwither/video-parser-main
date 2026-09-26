@@ -80,10 +80,21 @@ jobs:
               fi
               sleep 5
             done
-            # 会话登录模块：匿名访问应 302 跳登录页（兼容旧 Basic Auth 的 401）
-            CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7860/)
-            if [ "$CODE" != "302" ] && [ "$CODE" != "401" ]; then
-              echo "Anonymous access is not blocked (got $CODE)"
+            # 访客可浏览主页（200）；账户页与业务 API 必须被拦截（302 / 401）
+            CODE_HOME=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7860/)
+            if [ "$CODE_HOME" != "200" ]; then
+              echo "Homepage not reachable (got $CODE_HOME)"
+              exit 1
+            fi
+            CODE_ACCT=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7860/account)
+            if [ "$CODE_ACCT" != "302" ]; then
+              echo "Account page not protected (got $CODE_ACCT)"
+              exit 1
+            fi
+            CODE_API=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7860/api/auth/login \
+              -H 'Content-Type: application/json' -d '{"username":"admin","password":"wrongpass"}')
+            if [ "$CODE_API" != "401" ]; then
+              echo "Login API not protected (got $CODE_API)"
               exit 1
             fi
             echo "==> DEPLOY DONE $(date)"
