@@ -17,7 +17,7 @@ html[data-theme="dark"] { color-scheme: dark; }
 html[data-theme="light"], html[data-theme="light"] body { --bg: #ffffff; --surface: #ffffff;
   --border: #e4e4e7; --border-strong: #d4d4d8; --text: #1a1a1a; --text-sub: #6b7280;
   --accent: #6366f1; --accent-hover: #4f46e5; --accent-light: #eef2ff; --err: #dc2626; --ok: #16a34a; }
-html[data-theme="dark"], html[data-theme="dark"] body { --bg: #0c0c10; --surface: #17171d;
+html[data-theme="dark"], html[data-theme="dark"] body { --bg: #17171d; --surface: #17171d;
   --border: #26262e; --border-strong: #3f3f46; --text: #f2f2f0; --text-sub: #9ca3af;
   --accent: #818cf8; --accent-hover: #a5b4fc; --accent-light: #1e1b4b; --err: #f87171; --ok: #4ade80; }
 body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -52,6 +52,7 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in sr
 .ghost { position: fixed; top: 16px; right: 16px; width: 34px; height: 34px; border-radius: 999px;
   border: 1px solid var(--border-strong); background: transparent; color: var(--text);
   cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+.vp-lang-btn { right: 56px; font-size: 12px; font-weight: 600; min-width: 34px; }
 .info-rows { margin: 18px 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .info-rows div { display: flex; justify-content: space-between; padding: 10px 14px;
   font-size: 13px; border-bottom: 1px solid var(--border); }
@@ -167,7 +168,7 @@ def register_page(next_url: str = "/", error: str = "") -> str:
 def account_page(user: dict, sessions_active: int = 0, error: str = "", ok: str = "") -> str:
     err_html = f'<div class="msg err">{_html.escape(error)}</div>' if error else ""
     ok_html = f'<div class="msg ok">{_html.escape(ok)}</div>' if ok else ""
-    admin_badge = ' <span class="badge">管理员</span>' if user.get("is_admin") else ""
+    admin_badge = ' <span class="badge" data-i18n="admin">管理员</span>' if user.get("is_admin") else ""
     body = f"""
 <div class="card">
   {_brand()}
@@ -186,7 +187,7 @@ def account_page(user: dict, sessions_active: int = 0, error: str = "", ok: str 
     <button class="btn" type="submit">修改密码</button>
     {err_html}{ok_html}
   </form>
-  <div class="foot"><a href="/">← 返回工作台</a> · <a href="/logout">退出登录</a></div>
+  <div class="foot"><a href="/" data-i18n="back">← 返回工作台</a> · <a href="/logout" data-i18n="logout">退出登录</a></div>
 </div>
 """
     return _page("账户", body)

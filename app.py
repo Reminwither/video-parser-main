@@ -830,6 +830,101 @@ THEME_SCRIPT = """
   function vpLogin() {
     location.href = '/login';
   }
+  // ---- 多语言（简体中文 / English）----
+  // 文案由 data-i18n / data-i18n-ph 标记 + Gradio 组件 elem_id 决定，
+  // 切换时统一重渲染；偏好存 localStorage['vp-lang']，默认 zh。
+  var VP_I18N = {
+    zh: {
+      nav_parse: "视频解析", nav_ai: "AI 分析", nav_help: "使用指南",
+      nav_login: "登录", nav_start: "开始使用", nav_logout: "退出",
+      hero_eyebrow: "视频智能分析平台",
+      hero_title_a: "解析 · 下载 · ", hero_title_b: "AI 取证",
+      hero_sub: "粘贴抖音、哔哩哔哩、小红书、快手、好看视频链接，在线播放、下载无水印原画，并按时间轴生成多模态证据报告。",
+      sec_parse: "解析视频", sec_preview: "预览", sec_report: "AI 取证报告", sec_help: "使用指南",
+      empty_head: "等待视频解析",
+      empty_desc: "在左侧粘贴视频链接并点击「解析视频」，即可在此生成封面与在线播放",
+      empty_s1: "粘贴链接", empty_s2: "解析视频", empty_s3: "AI 取证",
+      help_t1: "粘贴链接", help_d1: "支持抖音 / 哔哩哔哩 / 小红书 / 快手 / 好看视频分享链接，自动识别平台",
+      help_t2: "解析视频", help_d2: "封面、时长与视频信息一屏展示，无需手动选择来源",
+      help_t3: "播放 / 下载", help_d3: "在线播放走本地缓存，下载输出无水印原画（B 站自动合并音视频）",
+      help_t4: "AI 取证分析", help_d4: "字幕 / 音频 / 画面逐段时间轴取证，支持多人转写输出分组稿",
+      help_notes: "下载的视频保存在 downloads 目录 · AI 分析前需先播放视频加载缓存",
+      modal_title: "登录工作台", modal_sub: "视频解析 · AI 分析 · 多模态取证",
+      modal_user: "用户名", modal_pass: "密码", modal_btn: "登 录", modal_loading: "登录中…",
+      modal_foot_pre: "没有账号？", modal_foot_link: "立即注册",
+      warn_ffmpeg: "⚠️ 警告：未在系统中检测到 ffmpeg。B 站视频合并与 AI 内容提取可能无法运行。请安装 ffmpeg 并加入系统 PATH，或设置 FFMPEG_PATH 环境变量。",
+      lang_btn: "EN",
+      vp_in_url: "视频链接", vp_btn_parse: "解析视频", vp_dd_platform: "来源平台",
+      vp_btn_clear: "清空", vp_btn_play: "在线播放", vp_btn_download: "下载视频",
+      vp_chk_speaker: "多人转写", vp_btn_extract: "AI 时间轴证据分析",
+      vp_out_status: "状态", vp_vid: "在线播放", vp_img_cover: "视频封面", vp_file: "下载文件"
+    },
+    en: {
+      nav_parse: "Parse", nav_ai: "AI Analysis", nav_help: "Guide",
+      nav_login: "Sign in", nav_start: "Get started", nav_logout: "Sign out",
+      hero_eyebrow: "Video Intelligence Platform",
+      hero_title_a: "Parse · Download · ", hero_title_b: "AI Evidence",
+      hero_sub: "Paste links from Douyin, Bilibili, Xiaohongshu, Kuaishou or Haokan, play online, download watermark-free originals, and generate a multimodal timeline evidence report.",
+      sec_parse: "Parse Video", sec_preview: "Preview", sec_report: "AI Evidence Report", sec_help: "Guide",
+      empty_head: "Awaiting video",
+      empty_desc: "Paste a link on the left and click Parse to generate cover and online playback here.",
+      empty_s1: "Paste link", empty_s2: "Parse", empty_s3: "AI Evidence",
+      help_t1: "Paste link", help_d1: "Supports Douyin / Bilibili / Xiaohongshu / Kuaishou / Haokan share links with auto platform detection",
+      help_t2: "Parse", help_d2: "Cover, duration and video info shown on one screen, no manual source selection",
+      help_t3: "Play / Download", help_d3: "Online playback uses local cache; downloads are watermark-free originals (Bilibili auto-merges audio)",
+      help_t4: "AI Evidence", help_d4: "Timeline evidence from subtitles / audio / frames, with multi-speaker grouped transcripts",
+      help_notes: "Downloads are saved in the downloads folder · Play the video to load cache before AI analysis",
+      modal_title: "Sign in to workspace", modal_sub: "Video parsing · AI analysis · multimodal evidence",
+      modal_user: "Username", modal_pass: "Password", modal_btn: "Sign in", modal_loading: "Signing in…",
+      modal_foot_pre: "No account? ", modal_foot_link: "Sign up",
+      warn_ffmpeg: "⚠️ Warning: ffmpeg not found on this system. Bilibili merging and AI extraction may fail. Install ffmpeg and add it to PATH, or set FFMPEG_PATH.",
+      lang_btn: "中文",
+      vp_in_url: "Video URL", vp_btn_parse: "Parse Video", vp_dd_platform: "Source Platform",
+      vp_btn_clear: "Clear", vp_btn_play: "Play Online", vp_btn_download: "Download Video",
+      vp_chk_speaker: "Multi-speaker", vp_btn_extract: "AI Timeline Evidence",
+      vp_out_status: "Status", vp_vid: "Online Playback", vp_img_cover: "Cover", vp_file: "Download File"
+    }
+  };
+  // Gradio 组件：elem_id -> 文本节点选择器（button 直接取内部 button，其余取 label）
+  var VP_COMP_SEL = {
+    vp_in_url: "label", vp_btn_parse: "button", vp_dd_platform: "label",
+    vp_btn_clear: "button", vp_btn_play: "button", vp_btn_download: "button",
+    vp_chk_speaker: "label", vp_btn_extract: "button", vp_out_status: "label",
+    vp_vid: "label", vp_img_cover: "label", vp_file: "label"
+  };
+  function vpCurLang() { return window.__vp_lang || 'zh'; }
+  function vpApplyLang(l) {
+    try { localStorage.setItem('vp-lang', l); } catch (e) {}
+    window.__vp_lang = l;
+    var d = VP_I18N[l] || VP_I18N.zh;
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var k = el.getAttribute('data-i18n');
+      if (d[k] != null) el.textContent = d[k];
+    });
+    document.querySelectorAll('[data-i18n-ph]').forEach(function (el) {
+      var k = el.getAttribute('data-i18n-ph');
+      if (d[k] != null) el.setAttribute('placeholder', d[k]);
+    });
+    Object.keys(VP_COMP_SEL).forEach(function (id) {
+      var sel = VP_COMP_SEL[id];
+      var root = document.getElementById(id);
+      if (!root) return;
+      var t = d[id];
+      if (t == null) return;
+      if (sel === 'button') {
+        var b = root.querySelector('button');
+        if (b) b.textContent = t;
+      } else {
+        var lab = root.querySelector(sel);
+        if (lab) lab.textContent = t;
+      }
+    });
+    var lb = document.getElementById('vp-lang-btn');
+    if (lb) lb.textContent = d.lang_btn;
+  }
+  function vpToggleLang() {
+    vpApplyLang(vpCurLang() === 'zh' ? 'en' : 'zh');
+  }
   // 会话用户态：登录后把「登录」链接替换为「用户名 · 退出」
   function vpInitAuthUI() {
     var xhr = new XMLHttpRequest();
@@ -951,6 +1046,15 @@ THEME_SCRIPT = """
   }
   window.addEventListener('scroll', vpOnScroll, { passive: true });
   vpOnScroll();
+
+  // 语言初始化：读偏好并应用（chrome 同步），重试覆盖 Gradio 异步挂载的组件标签
+  var _lang = 'zh';
+  try { _lang = localStorage.getItem('vp-lang') || 'zh'; } catch (e) {}
+  window.__vp_lang = _lang;
+  vpApplyLang(_lang);
+  setTimeout(function () { vpApplyLang(window.__vp_lang); }, 600);
+  setTimeout(function () { vpApplyLang(window.__vp_lang); }, 1500);
+  setTimeout(function () { vpApplyLang(window.__vp_lang); }, 2500);
 })();
 </script>
 """
@@ -1125,11 +1229,12 @@ def create_app():
                     <svg class="vp-icon-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
                     <svg class="vp-icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/></svg>
                   </button>
-                  <a class="vp-login-link" id="vp-login-link" href="/login">
+                  <button class="vp-lang-round" id="vp-lang-btn" type="button" onclick="vpToggleLang()" title="切换语言 / Switch language" aria-label="切换语言">EN</button>
+                  <a class="vp-login-link" id="vp-login-link" href="javascript:void(0)" onclick="vpOpenLoginModal()">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg>
-                    登录
+                    <span data-i18n="nav_login">登录</span>
                   </a>
-                  <button class="vp-cta-pill" type="button" onclick="vpScrollTo('.vp-url')">开始使用</button>
+                  <button class="vp-cta-pill" type="button" onclick="vpScrollTo('.vp-url')" data-i18n="nav_start">开始使用</button>
                 </div>
               </div>
             </div>
@@ -1143,13 +1248,13 @@ def create_app():
               <div class="vp-modal-card">
                 <button id="vp-modal-close" class="vp-modal-x" type="button" aria-label="关闭">&times;</button>
                 <div class="vp-modal-brand"><span class="vp-modal-logo">VA</span>VidAI</div>
-                <div class="vp-modal-title">登录工作台</div>
-                <div class="vp-modal-sub">视频解析 · AI 分析 · 多模态取证</div>
-                <input id="vp-modal-user" class="vp-modal-input" type="text" placeholder="用户名" autocomplete="username" />
-                <input id="vp-modal-pass" class="vp-modal-input" type="password" placeholder="密码" autocomplete="current-password" />
-                <button id="vp-modal-submit" class="vp-modal-btn" type="button">登 录</button>
+                <div class="vp-modal-title" data-i18n="modal_title">登录工作台</div>
+                <div class="vp-modal-sub" data-i18n="modal_sub">视频解析 · AI 分析 · 多模态取证</div>
+                <input id="vp-modal-user" class="vp-modal-input" type="text" placeholder="用户名" data-i18n-ph="modal_user" autocomplete="username" />
+                <input id="vp-modal-pass" class="vp-modal-input" type="password" placeholder="密码" data-i18n-ph="modal_pass" autocomplete="current-password" />
+                <button id="vp-modal-submit" class="vp-modal-btn" type="button" data-i18n="modal_btn">登 录</button>
                 <div id="vp-modal-msg" class="vp-modal-msg"></div>
-                <div class="vp-modal-foot">没有账号？<a href="/register">立即注册</a></div>
+                <div class="vp-modal-foot"><span data-i18n="modal_foot_pre">没有账号？</span><a href="/register" data-i18n="modal_foot_link">立即注册</a></div>
               </div>
             </div>
             """
@@ -1271,7 +1376,7 @@ def create_app():
                         elem_classes=["vp-cover"]
                     )
                     download_output = gr.File(
-                        label="下载文件",
+                        label="下载文件", elem_id="vp_file",
                         visible=False,
                     )
 
@@ -1353,31 +1458,31 @@ def create_app():
         # 使用指南（双列横向卡，打破同构小卡网格）
         gr.HTML(
             """
-            <div class="vp-section-label"><span class="vp-section-num">04</span>使用指南</div>
+            <div class="vp-section-label"><span class="vp-section-num">04</span><span data-i18n="sec_help">使用指南</span></div>
             <div class="vp-help">
               <div class="vp-help-grid">
                 <div class="vp-help-item">
                   <div class="vp-help-step">01</div>
-                  <div class="vp-help-title">粘贴链接</div>
-                  <div class="vp-help-desc">支持抖音 / 哔哩哔哩 / 小红书 / 快手 / 好看视频分享链接，自动识别平台</div>
+                  <div class="vp-help-title" data-i18n="help_t1">粘贴链接</div>
+                  <div class="vp-help-desc" data-i18n="help_d1">支持抖音 / 哔哩哔哩 / 小红书 / 快手 / 好看视频分享链接，自动识别平台</div>
                 </div>
                 <div class="vp-help-item">
                   <div class="vp-help-step">02</div>
-                  <div class="vp-help-title">解析视频</div>
-                  <div class="vp-help-desc">封面、时长与视频信息一屏展示，无需手动选择来源</div>
+                  <div class="vp-help-title" data-i18n="help_t2">解析视频</div>
+                  <div class="vp-help-desc" data-i18n="help_d2">封面、时长与视频信息一屏展示，无需手动选择来源</div>
                 </div>
                 <div class="vp-help-item">
                   <div class="vp-help-step">03</div>
-                  <div class="vp-help-title">播放 / 下载</div>
-                  <div class="vp-help-desc">在线播放走本地缓存，下载输出无水印原画（B 站自动合并音视频）</div>
+                  <div class="vp-help-title" data-i18n="help_t3">播放 / 下载</div>
+                  <div class="vp-help-desc" data-i18n="help_d3">在线播放走本地缓存，下载输出无水印原画（B 站自动合并音视频）</div>
                 </div>
                 <div class="vp-help-item">
                   <div class="vp-help-step">04</div>
-                  <div class="vp-help-title">AI 取证分析</div>
-                  <div class="vp-help-desc">字幕 / 音频 / 画面逐段时间轴取证，支持多人转写输出分组稿</div>
+                  <div class="vp-help-title" data-i18n="help_t4">AI 取证分析</div>
+                  <div class="vp-help-desc" data-i18n="help_d4">字幕 / 音频 / 画面逐段时间轴取证，支持多人转写输出分组稿</div>
                 </div>
               </div>
-              <div class="vp-help-notes">下载的视频保存在 downloads 目录 · AI 分析前需先播放视频加载缓存</div>
+              <div class="vp-help-notes" data-i18n="help_notes">下载的视频保存在 downloads 目录 · AI 分析前需先播放视频加载缓存</div>
             </div>
             """
         )
@@ -1574,7 +1679,7 @@ if __name__ == "__main__":
     # 样式经 <link> 注入 <head>（static/css/app.css，改 CSS 无需重启服务），
     # 主题脚本内联注入，head 解析期间同步应用主题，杜绝闪屏与布局抖动。
     # ?v= 版本号防缓存：CSS 迭代后强制浏览器拉新（否则旧样式会残留在用户端）
-    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260926c">\n' + THEME_SCRIPT
+    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260926d">\n' + THEME_SCRIPT
     try:
         combined_app = gr.mount_gradio_app(
             api_app, app, path="/",

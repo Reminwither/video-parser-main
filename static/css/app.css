@@ -191,6 +191,19 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #52525b; }
 html[data-theme="dark"] .vp-theme-round .vp-icon-sun { display: block !important; }
 html[data-theme="dark"] .vp-theme-round .vp-icon-moon { display: none !important; }
 
+/* 语言切换按钮：与主题钮同形（圆形轮廓 pill），放主题钮左侧 */
+.vp-lang-round {
+  height: 32px; min-width: 32px; padding: 0 9px; border-radius: 999px !important; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent !important; border: none;
+  outline: 1px solid var(--vp-border-strong); outline-offset: -1px;
+  color: var(--vp-text); cursor: pointer; font-family: inherit;
+  font-size: 12px; font-weight: 500; letter-spacing: .02em; line-height: 1;
+  transition: outline-color .15s ease, background-color .15s ease;
+}
+.vp-lang-round:hover { background: var(--vp-surface-2) !important; outline-color: var(--vp-text); }
+.vp-lang-round:focus-visible { outline: 2px solid var(--vp-accent); outline-offset: -2px; }
+
 /* 登录：文字 + 入场箭头图标（TikHub log-in 图标样式） */
 .vp-login-link {
   display: inline-flex; align-items: center; gap: 6px;
@@ -766,7 +779,7 @@ html[data-theme="light"] body.dark .status-box textarea {
   background: var(--vp-surface-2) !important;
   color: var(--vp-text) !important;
 }
-/* 本站深色 + 系统深色：body 用本站底色（#0c0c10，非 Gradio 的 #0f0f11） */
+/* 本站深色 + 系统深色：body 用本站底色（#17171d，非 Gradio 的 #0f0f11） */
 html[data-theme="dark"] body.dark {
   background: var(--vp-bg) !important;
 }
