@@ -66,6 +66,8 @@ jobs:
             docker rm video-parser-admin || true
 
             echo "==> [4/4] 启动（7861，只读挂载主站 /opt/video-parser 数据）"
+            # 确保实例层防火墙放行 7861（若实例有 iptables/ufw 限制则放开；无则 no-op）
+            iptables -I INPUT -p tcp --dport 7861 -j ACCEPT 2>/dev/null || true
             docker run -d \
               --name video-parser-admin \
               --restart unless-stopped \
