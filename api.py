@@ -254,7 +254,7 @@ async def vite_client_stub():
 
 import auth_db
 import auth_pages
-from auth_middleware import SessionAuthMiddleware
+from auth_middleware import SessionAuthMiddleware, get_client_ip
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 _api_auth_enabled = (
@@ -292,7 +292,7 @@ async def login_submit(request: Request):
     username = str(form.get("username", "")).strip()
     password = str(form.get("password", ""))
     next_url = _safe_next(str(form.get("next", "/")))
-    ip = request.client.host if request.client else "-"
+    ip = get_client_ip(request.scope)
 
     def fail(err: str, status: int = 200):
         return HTMLResponse(
@@ -360,7 +360,7 @@ async def register_submit(request: Request):
 
     logger.info(f"注册成功: {username}")
     token = auth_db.create_session(
-        user_id, ip=request.client.host if request.client else "-",
+        user_id, ip=get_client_ip(request.scope),
         user_agent=request.headers.get("user-agent", ""),
     )
     resp = RedirectResponse(next_url, status_code=303)
@@ -436,7 +436,7 @@ async def api_login(request: Request):
                             content={"retcode": 400, "succ": False, "retdesc": "请求格式错误"})
     username = str((data or {}).get("username", "")).strip()
     password = str((data or {}).get("password", ""))
-    ip = request.client.host if request.client else "-"
+    ip = get_client_ip(request.scope)
 
     if not username or not password:
         return JSONResponse(status_code=400,

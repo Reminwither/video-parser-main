@@ -12,6 +12,7 @@
 - 豁免：/health（容器健康检查）、/login、/register、/logout、公共静态资源、/favicon.ico、/@vite/client。
 """
 
+import ipaddress
 from urllib.parse import quote
 
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -33,10 +34,14 @@ def _get_cookie(scope: Scope, name: str) -> str:
 
 
 def get_client_ip(scope: Scope) -> str:
-    # 反代场景优先取 X-Forwarded-For 首段
+    # The public Caddy proxy overwrites X-Forwarded-For with the remote address.
     for k, v in scope.get("headers", []):
         if k == b"x-forwarded-for":
-            return v.decode("latin-1").split(",")[0].strip()
+            candidate = v.decode("latin-1").split(",")[0].strip()
+            try:
+                return str(ipaddress.ip_address(candidate))
+            except ValueError:
+                break
     client = scope.get("client") or ("", 0)
     return client[0] or "-"
 
