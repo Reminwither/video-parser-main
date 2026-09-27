@@ -4,6 +4,7 @@ import random
 from urllib.parse import urlparse, parse_qs, urljoin
 from configs.logging_config import logger
 from configs.general_constants import USER_AGENT_PC, DOMAIN_TO_NAME
+from utils.url_safety import assert_public_http_url
 
 
 class WebFetcher:
@@ -17,15 +18,32 @@ class WebFetcher:
         try:
             current_url = url
             for _ in range(max_redirects):
+                assert_public_http_url(current_url)
+                host = (urlparse(current_url).hostname or "").lower().rstrip(".")
+                supported_roots = (
+                    "douyin.com", "iesdouyin.com", "bilibili.com", "b23.tv",
+                    "xiaohongshu.com", "xhslink.com", "kuaishou.com",
+                    "haokan.baidu.com", "haokan.hao123.com", "weishi.qq.com",
+                    "pearvideo.com", "pipigx.com", "youtube.com", "youtu.be",
+                )
+                if not any(host == root or host.endswith("." + root) for root in supported_roots):
+                    return None
                 # 发送请求，禁止重定向
                 resp = requests.get(current_url, headers=WebFetcher.headers, allow_redirects=False, timeout=5)
-                resp.raise_for_status()
+                try:
+                    resp.raise_for_status()
+                    redirect_url = resp.headers.get("location")
+                finally:
+                    resp.close()
                 # 获取重定向后的URL
-                redirect_url = resp.headers.get("location")
                 if redirect_url:
                     # 处理相对路径重定向
                     if not redirect_url.startswith('http'):
                         redirect_url = urljoin(current_url, redirect_url)
+                    assert_public_http_url(redirect_url)
+                    next_host = (urlparse(redirect_url).hostname or "").lower().rstrip(".")
+                    if not any(next_host == root or next_host.endswith("." + root) for root in supported_roots):
+                        return None
                     if DOMAIN_TO_NAME.get(UrlParser.get_domain(redirect_url)):
                         break
                     else:
@@ -42,7 +60,7 @@ class WebFetcher:
                 else:
                     format_real_url = UrlParser.extract_video_address(url)
                     return format_real_url
-        except requests.RequestException as e:
+        except (requests.RequestException, ValueError) as e:
             logger.error(f"Failed to get the page: {e}")
             return None
         except Exception as e:

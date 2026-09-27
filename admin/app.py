@@ -35,8 +35,6 @@ from flask import (
 AUTH_DB_PATH = os.getenv("AUTH_DB_PATH", "/opt/video-parser/data/auth.db")
 ASSETS_DIR = os.getenv("ASSETS_DIR", "/opt/video-parser/downloads")
 LOGS_DIR = os.getenv("LOGS_DIR", "/opt/video-parser/logs")
-ADMIN_USER = os.getenv("APP_USER", "admin")
-APP_PASS = os.getenv("APP_PASS", "")          # 若设置，则强制主管理员必须用此密码
 PORT = int(os.getenv("PORT", "7861"))
 PBKDF2_ITERATIONS = 240_000
 VIDEO_EXT = {".mp4", ".webm", ".mkv", ".mov", ".flv", ".m4v", ".ts"}
@@ -54,6 +52,7 @@ app.secret_key = os.getenv("ADMIN_SECRET", secrets.token_urlsafe(32))
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE", "0").strip().lower() in {"1", "true", "yes", "on"},
     SESSION_COOKIE_PATH="/",
 )
 
@@ -77,19 +76,30 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 def auth_admin(username: str, password: str) -> bool:
-    """校验管理员账号；优先用 APP_PASS 强制主管理员密码。"""
-    if APP_PASS and username == ADMIN_USER:
-        return password == APP_PASS
+    """Use the current database password and active admin role."""
     try:
         c = ro_conn()
         row = c.execute(
-            "SELECT password_hash, is_admin FROM users WHERE username=? COLLATE NOCASE",
+            "SELECT password_hash, is_admin, is_active FROM users WHERE username=? COLLATE NOCASE",
             (username,),
         ).fetchone()
         c.close()
-        if not row or not row[1]:
+        if not row or not row[1] or not row[2]:
             return False
         return verify_password(password, row[0])
+    except Exception:
+        return False
+
+
+def active_admin(username: str) -> bool:
+    try:
+        c = ro_conn()
+        row = c.execute(
+            "SELECT is_admin, is_active FROM users WHERE username=? COLLATE NOCASE",
+            (username,),
+        ).fetchone()
+        c.close()
+        return bool(row and row[0] and row[1])
     except Exception:
         return False
 
@@ -223,7 +233,8 @@ def require_admin(f):
     from functools import wraps
     @wraps(f)
     def wrapper(*a, **k):
-        if not flask_session.get("admin_user"):
+        if not flask_session.get("admin_user") or not active_admin(flask_session["admin_user"]):
+            flask_session.clear()
             return redirect(url_for("login"))
         return f(*a, **k)
     return wrapper
@@ -295,7 +306,7 @@ def asset_file(p):
     """只读发送下载目录内的文件（防目录穿越）。"""
     root = Path(ASSETS_DIR).resolve()
     target = (root / unquote(p)).resolve()
-    if not str(target).startswith(str(root)):
+    if not target.is_relative_to(root):
         abort(403)
     if not target.is_file():
         abort(404)

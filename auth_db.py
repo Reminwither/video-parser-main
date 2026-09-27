@@ -338,11 +338,12 @@ def delete_session(token: str) -> None:
 # ==================== 会话 Cookie 属性 ====================
 
 def session_cookie_kwargs() -> dict:
+    secure = os.getenv("SESSION_COOKIE_SECURE", "0").strip().lower() in {"1", "true", "yes", "on"}
     return {
         "key": SESSION_COOKIE,
         "httponly": True,
         "samesite": "lax",
         "path": "/",
         "max_age": SESSION_TTL_SECONDS,
-        # 站点当前为 HTTP，不能加 Secure；上 HTTPS 反代后应加
+        "secure": secure,
     }

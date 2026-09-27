@@ -1,0 +1,11 @@
+# Temporary HTTP configuration for the first IP certificate issuance.
+# Keep the existing public app port available until HTTPS is verified.
+http://110.40.138.167 {
+	handle /.well-known/acme-challenge/* {
+		root * /var/www/certbot
+		file_server
+	}
+	handle {
+		reverse_proxy 127.0.0.1:7860
+	}
+}

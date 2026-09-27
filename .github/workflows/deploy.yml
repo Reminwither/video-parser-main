@@ -8,6 +8,10 @@ name: Deploy video-parser to Lighthouse
       - '.github/workflows/deploy-admin.yml'
   workflow_dispatch:
 
+concurrency:
+  group: lighthouse-server-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: SSH deploy & restart service
@@ -44,6 +48,13 @@ jobs:
           script: |
             set -e
             test -n "$APP_PASS" || { echo "APP_PASS secret is required"; exit 1; }
+            DOMAIN_VALUE=$(sed -n 's/^DOMAIN=//p' /opt/video-parser/.env | tail -n 1)
+            DOMAIN_HOST=${DOMAIN_VALUE#https://}
+            DOMAIN_HOST=${DOMAIN_HOST#http://}
+            DOMAIN_HOST=${DOMAIN_HOST%%/*}
+            test -n "$DOMAIN_HOST" || { echo "Set DOMAIN in /opt/video-parser/.env before deploying"; exit 1; }
+            grep -Eq '^SESSION_COOKIE_SECURE=(1|true|yes|on)$' /opt/video-parser/.env || { echo "Set SESSION_COOKIE_SECURE=1 after HTTPS is active"; exit 1; }
+            curl -fsS "https://$DOMAIN_HOST/health" >/dev/null || { echo "HTTPS reverse proxy is not healthy; refusing to replace the running app"; exit 1; }
             echo "==> [1/4] 导入本次提交"
             cd /opt/video-parser
             git fetch ./deploy.bundle HEAD
@@ -58,15 +69,20 @@ jobs:
             docker stop video-parser || true
             docker rm video-parser || true
 
-            echo "==> [4/4] 启动容器（7860 开机自启，挂载持久化目录）"
+            echo "==> [4/4] 启动容器（7860 仅本机访问，挂载持久化目录）"
+            mkdir -p /opt/video-parser/static/videos /opt/video-parser/static/images
             docker run -d \
               --name video-parser \
               --restart unless-stopped \
-              -p 7860:7860 \
+              -p 127.0.0.1:7860:7860 \
               --env-file /opt/video-parser/.env \
               -e APP_USER=admin \
               -e APP_PASS \
               -e REQUIRE_AUTH=1 \
+              -e ALLOW_REGISTER=0 \
+              -e SESSION_COOKIE_SECURE=1 \
+              -v /opt/video-parser/static/videos:/app/static/videos \
+              -v /opt/video-parser/static/images:/app/static/images \
               -v /opt/video-parser/downloads:/app/downloads \
               -v /opt/video-parser/cache:/app/cache \
               -v /opt/video-parser/logs:/app/logs \
@@ -100,6 +116,7 @@ jobs:
               echo "Login API not protected (got $CODE_API)"
               exit 1
             fi
+            curl -fsS "https://$DOMAIN_HOST/health" >/dev/null
             echo "==> DEPLOY DONE $(date)"
         env:
           APP_PASS: ${{ secrets.APP_PASS }}

@@ -1,0 +1,27 @@
+{
+	default_sni 110.40.138.167
+}
+
+http://110.40.138.167 {
+	handle /.well-known/acme-challenge/* {
+		root * /var/www/certbot
+		file_server
+	}
+	handle {
+		redir https://{host}{uri} permanent
+	}
+}
+
+https://110.40.138.167 {
+	encode zstd gzip
+	tls /etc/caddy/certs/video-parser-fullchain.pem /etc/caddy/certs/video-parser-key.pem
+	reverse_proxy 127.0.0.1:7860
+}
+
+# If the admin panel is enabled, it can reuse the IP certificate on a separate port.
+# Open TCP 8443 only if remote admin access is actually needed.
+# https://110.40.138.167:8443 {
+# 	tls /etc/caddy/certs/video-parser-fullchain.pem /etc/caddy/certs/video-parser-key.pem
+# 	encode zstd gzip
+# 	reverse_proxy 127.0.0.1:7861
+# }

@@ -204,16 +204,16 @@ docker ps   # STATUS 列出现 (healthy) 即可
 
 浏览器访问：
 
-- 直接 IP：`http://<公网IP>:7860`
-- 若配了域名+HTTPS：`https://你的域名`
+- 临时直连（仅部署排障）：`http://<公网IP>:7860`
+- HTTPS 访问：`https://你的域名`；暂时没有域名时，可按 [`ops/certbot/README.md`](ops/certbot/README.md) 配置公网 IP 证书。
 
 看到**深色沉浸风的"视频解析工作台"**&#x9996;页即部署成功。
 
 ---
 
-## 8.（可选）域名 + HTTPS（Nginx 反向代理）
+## 8.（可选）公网 HTTPS（Nginx 反向代理）
 
-用 IP:端口 访问不够正式，且某些浏览器对混合内容有限制。建议用 Nginx 反代到 80/443。
+公网服务应使用 HTTPS 反代到 80/443，并让应用端口只接受本机连接。域名可用 Nginx 配置 HTTPS；没有域名但有稳定公网 IP 时，使用 [`ops/certbot/README.md`](ops/certbot/README.md) 中的 IP 证书和 Caddy 配置流程。
 
 1. 安装 Nginx：`apt update && apt install -y nginx`
 2. 配置站点（以域名 `parser.example.com` 为例）：

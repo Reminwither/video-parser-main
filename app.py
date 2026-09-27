@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 from api import app as api_app, parse_video as api_parse_video, download_video as api_download_video, ParseRequest, DownloadRequest
 import auth_db
 from auth_middleware import SessionAuthMiddleware
+from utils.url_safety import fetch_public_response, open_public_stream
 from video_analysis import analyze_video_evidence_first
 
 # 加载环境变量
@@ -186,6 +187,14 @@ if QWEN_MODEL_ID.startswith('http'):
 
 MAX_ANALYSIS_FRAMES = int(os.getenv('MAX_ANALYSIS_FRAMES', '24'))
 
+
+def max_video_download_bytes() -> int:
+    try:
+        limit_mb = int(os.getenv("MAX_VIDEO_DOWNLOAD_MB", "500"))
+    except ValueError:
+        limit_mb = 500
+    return max(1, limit_mb) * 1024 * 1024
+
 class VideoClient:
     """视频解析下载客户端"""
 
@@ -225,7 +234,7 @@ class VideoClient:
             return cache_path
 
         try:
-            response = requests.get(cover_url, headers=headers, timeout=30)
+            response = fetch_public_response(cover_url, headers=headers, timeout=30, max_bytes=8 * 1024 * 1024)
             response.raise_for_status()
 
             with open(cache_path, 'wb') as f:
@@ -335,11 +344,13 @@ class VideoClient:
 
         filepath = os.path.join(self.download_dir, filename)
 
+        response = None
         try:
-            response = requests.get(url, headers=headers, stream=True, timeout=180)
-            response.raise_for_status()
+            response = open_public_stream(url, headers=headers, timeout=180)
 
             total_size = int(response.headers.get('content-length', 0))
+            if total_size > max_video_download_bytes():
+                raise ValueError("视频超过单文件下载上限，请调整 MAX_VIDEO_DOWNLOAD_MB")
             downloaded_size = 0
 
             with open(filepath, 'wb') as f:
@@ -347,14 +358,19 @@ class VideoClient:
                     if chunk:
                         f.write(chunk)
                         downloaded_size += len(chunk)
+                        if downloaded_size > max_video_download_bytes():
+                            raise ValueError("视频超过单文件下载上限，请调整 MAX_VIDEO_DOWNLOAD_MB")
                         if progress_callback and total_size > 0:
                             progress = downloaded_size / total_size
                             progress_callback(progress)
 
+            response.close()
             size_mb = os.path.getsize(filepath) / 1024 / 1024
             return True, filepath, f"下载完成 ({size_mb:.1f} MB)"
 
         except Exception as e:
+            if response is not None:
+                response.close()
             if os.path.exists(filepath):
                 os.remove(filepath)
             return False, "", f"下载失败: {str(e)}"
@@ -529,12 +545,14 @@ async def _async_play_video(progress) -> Tuple[str, str]:
         video_temp = os.path.join(client.cache_dir, f"{safe_id}_video.m4s")
         audio_temp = os.path.join(client.cache_dir, f"{safe_id}_audio.m4s")
 
+        response = None
         try:
             # 下载视频轨道
             progress(0, desc="下载视频轨道...")
-            response = requests.get(video_url, headers=headers, stream=True, timeout=180)
-            response.raise_for_status()
+            response = open_public_stream(video_url, headers=headers, timeout=180)
             total_size = int(response.headers.get('content-length', 0))
+            if total_size > max_video_download_bytes():
+                raise ValueError("视频超过单文件下载上限，请调整 MAX_VIDEO_DOWNLOAD_MB")
             downloaded_size = 0
 
             with open(video_temp, 'wb') as f:
@@ -542,14 +560,18 @@ async def _async_play_video(progress) -> Tuple[str, str]:
                     if chunk:
                         f.write(chunk)
                         downloaded_size += len(chunk)
+                        if downloaded_size > max_video_download_bytes():
+                            raise ValueError("视频超过单文件下载上限，请调整 MAX_VIDEO_DOWNLOAD_MB")
                         if total_size > 0:
                             progress(downloaded_size / total_size * 0.4, desc=f"下载视频轨道: {downloaded_size * 100 // total_size}%")
 
             # 下载音频轨道
+            response.close()
             progress(0.4, desc="下载音频轨道...")
-            response = requests.get(audio_url, headers=headers, stream=True, timeout=180)
-            response.raise_for_status()
+            response = open_public_stream(audio_url, headers=headers, timeout=180)
             total_size = int(response.headers.get('content-length', 0))
+            if total_size > max_video_download_bytes():
+                raise ValueError("视频超过单文件下载上限，请调整 MAX_VIDEO_DOWNLOAD_MB")
             downloaded_size = 0
 
             with open(audio_temp, 'wb') as f:
@@ -557,10 +579,13 @@ async def _async_play_video(progress) -> Tuple[str, str]:
                     if chunk:
                         f.write(chunk)
                         downloaded_size += len(chunk)
+                        if downloaded_size > max_video_download_bytes():
+                            raise ValueError("视频超过单文件下载上限，请调整 MAX_VIDEO_DOWNLOAD_MB")
                         if total_size > 0:
                             progress(0.4 + downloaded_size / total_size * 0.4, desc=f"下载音频轨道: {downloaded_size * 100 // total_size}%")
 
             # 合并音视频
+            response.close()
             progress(0.8, desc="合并音视频...")
             success, msg = client.merge_video_audio(video_temp, audio_temp, cache_path)
 
@@ -571,6 +596,8 @@ async def _async_play_video(progress) -> Tuple[str, str]:
                 return None, f"合并失败: {msg}"
 
         except Exception as e:
+            if response is not None:
+                response.close()
             # 清理临时文件
             for temp_file in [video_temp, audio_temp, cache_path]:
                 if os.path.exists(temp_file):
@@ -579,12 +606,14 @@ async def _async_play_video(progress) -> Tuple[str, str]:
 
     else:
         # 其他平台直接下载视频
+        response = None
         try:
             progress(0, desc="正在加载视频...")
-            response = requests.get(video_url, headers=headers, stream=True, timeout=180)
-            response.raise_for_status()
+            response = open_public_stream(video_url, headers=headers, timeout=180)
 
             total_size = int(response.headers.get('content-length', 0))
+            if total_size > max_video_download_bytes():
+                raise ValueError("视频超过单文件下载上限，请调整 MAX_VIDEO_DOWNLOAD_MB")
             downloaded_size = 0
 
             with open(cache_path, 'wb') as f:
@@ -592,13 +621,18 @@ async def _async_play_video(progress) -> Tuple[str, str]:
                     if chunk:
                         f.write(chunk)
                         downloaded_size += len(chunk)
+                        if downloaded_size > max_video_download_bytes():
+                            raise ValueError("视频超过单文件下载上限，请调整 MAX_VIDEO_DOWNLOAD_MB")
                         if total_size > 0:
                             progress(downloaded_size / total_size, desc=f"加载中: {downloaded_size * 100 // total_size}%")
 
+            response.close()
             progress(1.0, desc="加载完成")
             return cache_path, "加载完成"
 
         except Exception as e:
+            if response is not None:
+                response.close()
             if os.path.exists(cache_path):
                 os.remove(cache_path)
             return None, f"加载失败: {str(e)}"
@@ -710,7 +744,7 @@ async def _async_download_video(progress) -> Tuple[str, str]:
             return None, msg
 
 
-def extract_video_content(multi_speaker: bool = False, progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str]:
+def extract_video_content(multi_speaker: bool = False, progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str, object]:
     """
     按时间轴建立多模态证据后生成视频分析。
 
@@ -718,11 +752,11 @@ def extract_video_content(multi_speaker: bool = False, progress=gr.Progress(), r
         (content_text, status_message)
     """
     if not _vp_session_from_request(request):
-        return "🔒 请先登录后再使用此功能 / Please sign in first", "🔒 请先登录后再使用此功能 / Please sign in first"
+        return "🔒 请先登录后再使用此功能 / Please sign in first", "🔒 请先登录后再使用此功能 / Please sign in first", gr.update(value=None, visible=False)
     global current_video_info
 
     if not current_video_info:
-        return REPORT_PLACEHOLDER, "请先解析视频"
+        return REPORT_PLACEHOLDER, "请先解析视频", gr.update(value=None, visible=False)
 
     video_id = current_video_info.get('video_id', 'video')
 
@@ -731,7 +765,7 @@ def extract_video_content(multi_speaker: bool = False, progress=gr.Progress(), r
     cache_path = os.path.join(client.cache_dir, f"{safe_id}_play.mp4")
 
     if not os.path.exists(cache_path):
-        return REPORT_PLACEHOLDER, "请先点击「在线播放」加载视频后再提取内容"
+        return REPORT_PLACEHOLDER, "请先点击「在线播放」加载视频后再提取内容", gr.update(value=None, visible=False)
 
     try:
         qwen_client = OpenAI(
@@ -759,12 +793,18 @@ def extract_video_content(multi_speaker: bool = False, progress=gr.Progress(), r
             f"证据优先分析完成：{len(evidence.frames)} 个时间点，"
             f"{len(evidence.subtitles)} 条字幕，ASR={evidence.transcript_status} {diarize_note}"
         )
-        return result, status
+        reports_dir = os.path.join(client.download_dir, "reports")
+        os.makedirs(reports_dir, exist_ok=True)
+        safe_id = "".join(c for c in str(video_id) if c.isalnum())[:30] or "video"
+        report_path = os.path.join(reports_dir, f"{safe_id}_{int(time.time())}.md")
+        with open(report_path, "w", encoding="utf-8", newline="\n") as report_file:
+            report_file.write(result)
+        return result, status, gr.update(value=report_path, visible=True)
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return "", f"提取失败: {str(e)}"
+        return "", f"提取失败: {str(e)}", gr.update(value=None, visible=False)
 
 
 # 信息条初始占位（空状态引导）
@@ -1136,7 +1176,7 @@ def clear_all():
     current_video_info = {}
     return ("", "自动检测", "", INFO_BAR_EMPTY,
             gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
-            REPORT_PLACEHOLDER, EMPTY_GUIDE_HTML)
+            REPORT_PLACEHOLDER, gr.update(value=None, visible=False), EMPTY_GUIDE_HTML)
 
 
 # ==================== Gradio 界面 ====================
@@ -1432,6 +1472,11 @@ def create_app():
                 sanitize_html=True,
                 elem_classes=["vp-report"],
             )
+            report_file_output = gr.File(
+                label="下载分析报告（Markdown）",
+                visible=False,
+                elem_id="vp_report_download",
+            )
 
         # 隐藏的视频 URL 存储
         video_url_state = gr.State("")
@@ -1489,14 +1534,15 @@ def create_app():
             fn=extract_video_content,
             js=_gate_js("extract"),
             inputs=[multi_speaker_chk],
-            outputs=[content_output, status_output]
+            outputs=[content_output, status_output, report_file_output]
         )
 
         clear_btn.click(
             fn=clear_all,
             inputs=[],
             outputs=[url_input, platform_dropdown, status_output, title_bar,
-                    cover_output, video_output, download_output, content_output, guide_html]
+                    cover_output, video_output, download_output, content_output,
+                    report_file_output, guide_html]
         )
 
         # 使用指南（双列横向卡，打破同构小卡网格）
@@ -1735,10 +1781,10 @@ if __name__ == "__main__":
         combined_app = gr.mount_gradio_app(api_app, app, path="/")
 
     # 访问鉴权：SQLite 数据库 + 会话 Cookie（auth_db / auth_middleware）。
-    # REQUIRE_AUTH=1 启用；首次启动空库时以 APP_USER / APP_PASS 播种初始管理员，
+    # 默认启用会话鉴权；首次启动空库时以 APP_USER / APP_PASS 播种初始管理员，
     # 之后凭据以数据库为准（可在 /register 注册、/account 改密）。
     # 兼容旧部署：REQUIRE_AUTH 未配置但设置了 APP_PASS 时也启用。
-    _auth_on = os.getenv("REQUIRE_AUTH") == "1" or bool(os.getenv("APP_PASS", ""))
+    _auth_on = os.getenv("REQUIRE_AUTH", "1").strip().lower() not in {"0", "false", "no", "off"} or bool(os.getenv("APP_PASS", ""))
     if _auth_on:
         auth_db.init_db()
 

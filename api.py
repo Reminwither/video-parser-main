@@ -6,13 +6,14 @@
 
 import os
 import time
+import hashlib
+import secrets
 from typing import Optional
 from contextlib import asynccontextmanager
+from urllib.parse import urljoin
 
 import requests
-from requests.adapters import HTTPAdapter
-from requests.exceptions import RequestException, ChunkedEncodingError, ConnectionError
-from urllib3.util.retry import Retry
+from requests.exceptions import RequestException, ConnectionError
 from fastapi import FastAPI, Request, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +27,7 @@ from configs.general_constants import (
 )
 from utils.web_fetcher import WebFetcher, UrlParser
 from utils.vigenere_cipher import VigenereCipher
+from utils.url_safety import assert_public_http_url
 from src.downloader_factory import DownloaderFactory
 
 
@@ -109,6 +111,93 @@ def validate_request_headers(
     return None
 
 
+def _prune_expired_videos() -> int:
+    """Optionally remove old server-cached videos; disabled unless configured."""
+    try:
+        retention_days = int(os.getenv("VIDEO_RETENTION_DAYS", "0"))
+    except ValueError:
+        logger.warning("Invalid VIDEO_RETENTION_DAYS; automatic cleanup is disabled")
+        return 0
+    if retention_days <= 0:
+        return 0
+
+    cutoff = time.time() - retention_days * 24 * 60 * 60
+    removed = 0
+    try:
+        for name in os.listdir(SAVE_VIDEO_PATH):
+            path = os.path.join(SAVE_VIDEO_PATH, name)
+            if not name.lower().endswith(".mp4") or not os.path.isfile(path):
+                continue
+            try:
+                if os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+                    removed += 1
+            except OSError as exc:
+                logger.warning("Unable to prune cached video %s: %s", name, exc)
+    except OSError as exc:
+        logger.warning("Unable to inspect cached video directory: %s", exc)
+    if removed:
+        logger.info("Pruned %s cached video(s) older than %s days", removed, retention_days)
+    return removed
+
+
+def _download_public_video(url: str, destination: str, max_bytes: int) -> None:
+    """Download with redirect validation, a byte cap, and atomic file replacement."""
+    session = requests.Session()
+    current_url = url
+    response = None
+    try:
+        for _ in range(6):
+            assert_public_http_url(current_url)
+            response = session.get(
+                current_url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/123.0 Safari/537.36",
+                    "Referer": "https://www.pearvideo.com/" if "pearvideo.com" in current_url else "",
+                },
+                stream=True,
+                timeout=(10, 30),
+                allow_redirects=False,
+            )
+            if response.is_redirect or response.is_permanent_redirect:
+                next_url = response.headers.get("Location")
+                response.close()
+                response = None
+                if not next_url:
+                    raise requests.RequestException("Redirect response did not include a Location")
+                current_url = urljoin(current_url, next_url)
+                continue
+            response.raise_for_status()
+            break
+        else:
+            raise requests.RequestException("Too many redirects")
+
+        content_length = response.headers.get("Content-Length")
+        if content_length and int(content_length) > max_bytes:
+            raise OverflowError("视频文件超过服务器允许的大小")
+
+        temporary_path = destination + f".{secrets.token_hex(8)}.part"
+        written = 0
+        try:
+            with open(temporary_path, "wb") as output:
+                for chunk in response.iter_content(chunk_size=64 * 1024):
+                    if not chunk:
+                        continue
+                    written += len(chunk)
+                    if written > max_bytes:
+                        raise OverflowError("视频文件超过服务器允许的大小")
+                    output.write(chunk)
+            os.replace(temporary_path, destination)
+        except Exception:
+            if os.path.exists(temporary_path):
+                os.remove(temporary_path)
+            raise
+    finally:
+        if response is not None:
+            response.close()
+        session.close()
+
+
 # ==================== 应用生命周期 ====================
 
 @asynccontextmanager
@@ -117,6 +206,9 @@ async def lifespan(app: FastAPI):
     # 启动时执行
     logger.info("Starting Video Parser API Service (FastAPI)...")
     check_essential_dirs()
+    if os.getenv("REQUIRE_AUTH", "1").strip().lower() not in {"0", "false", "no", "off"} or os.getenv("APP_PASS", ""):
+        auth_db.init_db()
+    _prune_expired_videos()
     yield
     # 关闭时执行
     logger.info("Shutting down Video Parser API Service...")
@@ -132,10 +224,11 @@ app = FastAPI(
 )
 
 # CORS 中间件
+_cors_origins = [origin.strip() for origin in os.getenv("CORS_ALLOW_ORIGINS", "").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=bool(_cors_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -161,11 +254,19 @@ async def vite_client_stub():
 
 import auth_db
 import auth_pages
+from auth_middleware import SessionAuthMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
+
+_api_auth_enabled = (
+    os.getenv("REQUIRE_AUTH", "1").strip().lower() not in {"0", "false", "no", "off"}
+    or bool(os.getenv("APP_PASS", ""))
+)
+if _api_auth_enabled:
+    app.add_middleware(SessionAuthMiddleware)
 
 
 def _allow_register() -> bool:
-    return os.getenv("ALLOW_REGISTER", "1") != "0"
+    return os.getenv("ALLOW_REGISTER", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _safe_next(next_url: str) -> str:
@@ -546,7 +647,9 @@ async def download_video(
             )
         else:
             # 如果不是，服务器端下载视频并保存
-            video_filename = f'{request_video_id}.mp4'
+            video_filename = hashlib.sha256(
+                f"{request_video_id}:{request_video_url}".encode("utf-8")
+            ).hexdigest()[:32] + ".mp4"
             video_path = os.path.join(SAVE_VIDEO_PATH, video_filename)
 
             # 获取当前域名，用于返回静态资源链接
@@ -556,47 +659,21 @@ async def download_video(
 
             if not os.path.exists(video_path):
                 logger.info(f"Starting server-side download for {request_video_url}")
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-                    'Referer': 'https://www.pearvideo.com/'
-                }
-
-                # 如果是梨视频，必须带 Referer
-                if "pearvideo.com" in request_video_url:
-                    headers['Referer'] = 'https://www.pearvideo.com/'
-
-                # 创建带重试机制的session
-                session = requests.Session()
-                retries = Retry(
-                    total=5,
-                    backoff_factor=1,
-                    status_forcelist=[500, 502, 503, 504],
-                    allowed_methods=["GET"]
-                )
-                session.mount('http://', HTTPAdapter(max_retries=retries))
-                session.mount('https://', HTTPAdapter(max_retries=retries))
-
                 try:
-                    response = session.get(request_video_url, headers=headers, stream=True, timeout=120)
-                    response.raise_for_status()
-                except (RequestException, ConnectionError) as e:
-                    logger.error(f'{wx_open_id} Failed to connect: {e}')
+                    max_video_mb = max(1, int(os.getenv("MAX_VIDEO_DOWNLOAD_MB", "500")))
+                    _download_public_video(request_video_url, video_path, max_video_mb * 1024 * 1024)
+                except OverflowError as e:
                     return JSONResponse(
-                        status_code=200,
-                        content=make_response(200, '服务器下载失败，返回原始链接', {'download_url': request_video_url}, None, True)
+                        status_code=413,
+                        content=make_response(413, str(e), None, None, False),
                     )
-
-                try:
-                    # 保存视频到服务器
-                    with open(video_path, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                except (ChunkedEncodingError, IOError) as e:
-                    logger.error(f'{wx_open_id} Failed to save video: {e}')
-                    # 删除可能不完整的文件
-                    if os.path.exists(video_path):
-                        os.remove(video_path)
+                except ValueError as e:
+                    return JSONResponse(
+                        status_code=400,
+                        content=make_response(400, str(e), None, None, False),
+                    )
+                except (RequestException, ConnectionError, OSError) as e:
+                    logger.error(f'{wx_open_id} Failed to connect: {e}')
                     return JSONResponse(
                         status_code=200,
                         content=make_response(200, '服务器下载失败，返回原始链接', {'download_url': request_video_url}, None, True)

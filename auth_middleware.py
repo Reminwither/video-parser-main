@@ -66,6 +66,9 @@ class SessionAuthMiddleware:
             return
 
         path = scope.get("path", "")
+        if scope.get("type") == "http" and scope.get("method") == "OPTIONS":
+            await self.app(scope, receive, send)
+            return
         token = _get_cookie(scope, SESSION_COOKIE)
         session = auth_db.get_session_user(token) if token else None
 

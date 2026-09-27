@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for short-lived Let's Encrypt certificate renewal twice daily
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=12h
+Persistent=true
+Unit=video-parser-certbot-renew.service
+
+[Install]
+WantedBy=timers.target

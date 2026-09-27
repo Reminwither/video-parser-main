@@ -1,0 +1,6 @@
+[Unit]
+Description=Renew short-lived Let's Encrypt certificates for video-parser
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/certbot renew --quiet

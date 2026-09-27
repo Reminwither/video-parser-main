@@ -1,5 +1,6 @@
 import mysql.connector
 import json
+from configs.general_constants import DATABASE_CONFIG
 
 
 class UserPermissions:
@@ -148,11 +149,6 @@ def query_and_set_permissions():
 
 
 if __name__ == "__main__":
-    DATABASE_CONFIG = {
-    'host': 'localhost',  # 数据库主机地址
-    'user': 'root',  # 数据库用户名
-    'password': 'yuandian123',  # 数据库密码
-    'database': 'ucmao_parse'  # 数据库名称
-    }
+    if not DATABASE_CONFIG.get("database"):
+        raise SystemExit("请先在环境变量中配置 DB_HOST、DB_USER、DB_PASSWORD 和 DB_NAME")
     query_and_set_permissions()
-

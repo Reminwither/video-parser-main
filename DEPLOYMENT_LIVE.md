@@ -1,5 +1,7 @@
 # 视频解析工作台 · 线上部署记录
 
+> 本文是 2026-09-22 的历史部署快照，不代表本次代码检查时重新验证过的线上状态。代码仓库中的配置调整不会自动改变服务器；HTTPS、端口绑定和防火墙需在维护窗口执行并验证。
+
 > 部署时间：2026-09-22 ｜ 部署执行：WorkBuddy（Lighthouse MCP 直连）
 > 状态：**✅ 运行中（healthy）**
 
@@ -9,7 +11,7 @@
 http://110.40.138.167:7860
 ```
 
-（公网 IP + 容器端口，无需域名即可访问。如需 `https://你的域名` 再单独配反代。）
+历史上使用公网 IP + 容器端口直接访问。该方式不适合登录系统；完成 HTTPS 反向代理前，不应把它作为长期公网入口。暂时没有域名时，可按 IP 证书步骤配置 HTTPS。
 
 ---
 
@@ -28,9 +30,9 @@ http://110.40.138.167:7860
 - **代码来源**：GitHub 公开仓库 `https://github.com/Reminwither/video-parser-main`（commit `68e143b`，即深色 UI 版本）
 - **代码位置**：服务器 `/opt/video-parser`
 - **镜像**：`video-parser:latest`（本地构建，非阿里云旧镜像）
-- **容器**：`video-parser`（`--restart unless-stopped`，开机自启；映射 `7860:7860`；挂载 `downloads/ cache/ logs/` 持久化）
+- **容器**：`video-parser`（历史快照映射 `7860:7860`；该快照未列出 `data/` 持久化挂载，需核对并补齐）
 - **配置**：`.env`（`QWEN_API_KEY` = 你的 ModelScope 令牌，权限 `600`）
-- **防火墙**：已放通 **TCP 7860**（来源 `0.0.0.0/0`）
+- **防火墙**：历史快照显示 TCP 7860 曾对 `0.0.0.0/0` 放通；需核对并在 HTTPS 代理验证后关闭公网直连
 
 ## 🔧 绕过的几个中国服务器坑（已解决）
 
@@ -51,10 +53,11 @@ docker restart video-parser                # 重启容器生效
 
 > `Dockerfile.prod` 放在 `/opt`（不在仓库内），避免 `git pull` 时与你仓库里的 Dockerfile 冲突。
 
-## ⚠️ 注意事项
+## ⚠️ 待处理事项
 
 - **续费**：实例 2026-10-22 到期，包月手动续费模式，别忘了。
 - **密钥轮换**：`QWEN_API_KEY` 是 ModelScope 账号级令牌，建议用完后去后台轮换一个，别在别处复用。
-- **端口安全**：当前 7860 对全网开放。若要收紧，把防火墙规则来源从 `0.0.0.0/0` 改成你自己的 IP（`describe_firewall_rules` → 删旧规则 → 加新规则）。
-- **HTTPS / 域名**：机器上 Caddy 已在 `:80` 代理别的服务，且 MCP 读不到 Caddyfile，暂未做反代。需要的话单独处理（可换 Nginx 或手动改 Caddy）。
-- **健康检查**：`GET http://110.40.138.167:7860/health` 返回 `{"status":"healthy"}` 即正常。
+- **HTTPS**：本仓库新增了 [Caddy 反向代理模板](ops/caddy/Caddyfile.example)、[IP 证书签发与续期步骤](ops/certbot/README.md) 和 [加固步骤](ops/DEPLOYMENT_HARDENING.md)。当前可先用稳定公网 IP 配置，无需等购买域名；确认公网 IP 和安全组 80/443 后再落地。
+- **会话数据库**：确认容器以 `/opt/video-parser/data:/app/data` 挂载，避免重建后丢失账户。
+- **端口安全**：代理通过 HTTPS 验证后，将 7860（以及管理服务 7861）改为仅本机绑定，并关闭相应公网防火墙规则。
+- **健康检查**：本机检查 `http://127.0.0.1:7860/health`，公网经 HTTPS IP/域名检查；不要把 HTTP 7860 当作对外入口。

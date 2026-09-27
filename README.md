@@ -27,6 +27,7 @@ models: #关联模型
 - **无水印下载**：智能解析视频直链，绕过水印限制
 - **在线播放**：支持浏览器内直接播放视频
 - **证据优先分析**：按时间轴对齐画面、字幕与可选 ASR，再区分原始证据、释义和推论
+- **报告导出**：分析完成后可下载 Markdown 报告，便于归档和分享
 - **Web 界面**：基于 Gradio 的友好操作界面
 - **RESTful API**：标准化接口，支持二次开发
 - **自动文档**：FastAPI 自动生成 Swagger/ReDoc 文档
@@ -64,7 +65,7 @@ cp .env.example .env
 # 编辑 .env 文件，填入 QWEN_API_KEY
 
 # 构建并启动服务
-docker-compose up -d
+docker compose up -d --build
 
 # 查看日志
 docker-compose logs -f
@@ -77,11 +78,12 @@ version: '3.8'
 
 services:
   video-parser:
-    image: registry.cn-hangzhou.aliyuncs.com/chuchengzhi/video-parser:latest
+    build: .
+    image: video-parser:local
     container_name: video-parser
     restart: unless-stopped
     ports:
-      - "7860:7860"   # 统一服务端口 (FastAPI + Gradio)
+      - "127.0.0.1:7860:7860"   # 仅本机；公网请用 HTTPS 反向代理
     volumes:
       # 持久化存储
       - ./static/videos:/app/static/videos
@@ -89,12 +91,17 @@ services:
       - ./downloads:/app/downloads
       - ./cache:/app/cache
       - ./logs:/app/logs
+      - ./data:/app/data
     # 从 .env 文件加载环境变量
     env_file:
       - .env
     environment:
       - TZ=Asia/Shanghai
       - PYTHONUNBUFFERED=1
+      - AUTH_DB_PATH=/app/data/auth.db
+      - REQUIRE_AUTH=1
+      - ALLOW_REGISTER=0
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-0}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
       interval: 30s
@@ -122,11 +129,12 @@ docker build -t video-parser:latest .
 # 运行容器（使用 --env-file 加载环境变量）
 docker run -d \
   --name video-parser \
-  -p 7860:7860 \
+  -p 127.0.0.1:7860:7860 \
   --env-file .env \
   -v $(pwd)/static/videos:/app/static/videos \
   -v $(pwd)/downloads:/app/downloads \
   -v $(pwd)/cache:/app/cache \
+  -v $(pwd)/data:/app/data \
   -v $(pwd)/logs:/app/logs \
   --restart unless-stopped \
   video-parser:latest
@@ -162,6 +170,10 @@ vim .env  # 编辑配置
 | `CHANGE_DETECTION_FPS` | 场景/文字变化检测频率 | `2.0` |
 | `TEXT_REGION_CHANGE_THRESHOLD` | 字幕/屏幕文字区域变化候选阈值 | `0.10` |
 | `VISION_BATCH_SIZE` | 每批视觉观察帧数 | `6` |
+| `ALLOW_REGISTER` | 是否开放自助注册 | `0` |
+| `SESSION_COOKIE_SECURE` | HTTPS 代理下启用安全 Cookie | `0`（HTTPS 部署设为 `1`） |
+| `MAX_VIDEO_DOWNLOAD_MB` | 单个服务端缓存视频上限 | `500` |
+| `VIDEO_RETENTION_DAYS` | 自动清理缓存视频天数；`0` 禁用 | `0` |
 | `ASR_MODEL_ID` | 可选的 OpenAI 兼容语音转写模型 | 未配置（诚实降级） |
 | `ASR_BACKEND` | `openai` 或本地 `faster-whisper` | `openai` |
 | `ASR_LANGUAGE` | 可选语音语言提示，中文使用 `zh` | 无 |
@@ -183,7 +195,7 @@ vim .env  # 编辑配置
 docker-compose down
 
 # 重新构建并启动
-docker-compose up -d --build
+docker compose up -d --build
 
 # 查看服务状态
 docker-compose ps
@@ -218,6 +230,8 @@ docker rmi video-parser:latest
 ```
 
 ---
+
+生产环境请按 [生产访问与存储说明](ops/DEPLOYMENT_HARDENING.md) 配置 HTTPS 反向代理、持久化登录数据库和防火墙。不要把 7860 或管理端口直接暴露到公网。
 
 ### 方式二：本地部署
 

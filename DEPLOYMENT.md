@@ -36,17 +36,18 @@ docker-compose down
 docker pull registry.cn-hangzhou.aliyuncs.com/chuchengzhi/video-parser:latest
 
 # 2. 创建必要的目录
-mkdir -p static/videos static/images downloads cache logs
+mkdir -p static/videos static/images downloads cache logs data
 
 # 3. 启动容器
 docker run -d \
   --name video-parser \
-  -p 7860:7860 \
+  -p 127.0.0.1:7860:7860 \
   --env-file .env \
   -v $(pwd)/static/videos:/app/static/videos \
   -v $(pwd)/static/images:/app/static/images \
   -v $(pwd)/downloads:/app/downloads \
   -v $(pwd)/cache:/app/cache \
+  -v $(pwd)/data:/app/data \
   -v $(pwd)/logs:/app/logs \
   --restart unless-stopped \
   registry.cn-hangzhou.aliyuncs.com/chuchengzhi/video-parser:latest
@@ -97,6 +98,7 @@ API_SERVER_URL=http://127.0.0.1:7860
 - `./downloads` - 下载的视频文件
 - `./cache` - 缓存文件
 - `./logs` - 应用日志
+- `./data` - 登录用户和会话数据库（必须持久化）
 
 ## 健康检查
 

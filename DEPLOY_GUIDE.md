@@ -41,8 +41,8 @@
 | `deploy.sh` | 一键部署 + 健康检查 + 验证脚本 | 推荐 |
 
 ### 1.3 端口与挂载
-- 端口：**7860**（容器映射 `-p 7860:7860`）
-- 持久化挂载（容器）：`static/videos`、`static/images`、`downloads`、`cache`、`logs`
+- 端口：**7860**（仅本机映射 `-p 127.0.0.1:7860:7860`；生产公网入口走 HTTPS 反向代理）
+- 持久化挂载（容器）：`static/videos`、`static/images`、`downloads`、`cache`、`logs`、`data`
 
 ---
 
@@ -71,8 +71,10 @@ export VISION_BATCH_SIZE=6
 
 ### 方式三：Docker 显式传入
 ```bash
-docker run -d --name video-parser -p 7860:7860 \
+docker run -d --name video-parser -p 127.0.0.1:7860:7860 \
   -e QWEN_API_KEY="ms-xxxxxxxx" \
+  -e REQUIRE_AUTH=1 -e ALLOW_REGISTER=0 -e SESSION_COOKIE_SECURE=1 \
+  -v $(pwd)/data:/app/data \
   -e QWEN_MODEL_ID="Qwen/Qwen3-VL-8B-Instruct" \
   video-parser:latest
 ```
@@ -91,7 +93,7 @@ docker run -d --name video-parser -p 7860:7860 \
 | `VISION_BATCH_SIZE` | 每批视觉观察帧数 | `6` | 否 |
 | `ASR_MODEL_ID` | 可选 OpenAI 兼容语音转写模型 | 无 | 否 |
 | `API_SERVER_URL` | 后端 API 地址（Gradio 调用） | `http://127.0.0.1:7860` | 否 |
-| `DOMAIN` | 对外域名（生成下载链接用，可选） | 自动识别 | 否 |
+| `DOMAIN` | 对外 HTTPS 地址（生成下载链接用，可选，可填域名或公网 IP） | 自动识别 | 否 |
 
 > 注意：`.env` 含密钥，已写入 `.gitignore`，请勿提交到代码仓库。
 
@@ -129,7 +131,7 @@ ffmpeg -version   # 验证安装
 ### C. 可选：初始化 MySQL（仅启用附加功能）
 ```bash
 mysql -u root -p < schema.sql
-# 在代码中配置 DATABASE_CONFIG（host/user/password/database）后启用 DB 功能
+# 设置 DB_HOST、DB_USER、DB_PASSWORD、DB_NAME 环境变量后启用 DB 功能
 ```
 
 ---
@@ -146,12 +148,13 @@ docker-compose logs -f
 
 ### A2. 容器部署 — 单 `docker run`
 ```bash
-mkdir -p static/videos static/images downloads cache logs
+mkdir -p static/videos static/images downloads cache logs data
 docker run -d \
   --name video-parser \
-  -p 7860:7860 \
+  -p 127.0.0.1:7860:7860 \
   --env-file .env \
   -v $(pwd)/static/videos:/app/static/videos \
+  -v $(pwd)/data:/app/data \
   -v $(pwd)/static/images:/app/static/images \
   -v $(pwd)/downloads:/app/downloads \
   -v $(pwd)/cache:/app/cache \
@@ -173,9 +176,9 @@ python app.py
 - 进程为「Gradio + FastAPI 合并服务」，单进程占用单端口，无需额外反向代理即可同时提供 API 与 Web UI。
 
 ### C. 云平台部署要点
-- **云服务器（ECS/轻量应用服务器）**：按 A 部署后，在**安全组/防火墙**放行 `7860` 端口；建议前置 Nginx/Caddy 反代并配置 HTTPS。
+- **云服务器（ECS/轻量应用服务器）**：前置 Nginx/Caddy 反代并配置 HTTPS，应用端口仅绑定本机，避免公网直接访问 `7860`。有域名可使用代理自动证书；暂时没有域名时，可按 `ops/certbot/README.md` 为稳定公网 IP 配置短效证书和自动续期。
 - **托管平台（Hugging Face Spaces / OpenXLab）**：上传代码，平台读取 `packages.txt` 自动安装 `ffmpeg`；通过平台环境变量面板设置 `QWEN_API_KEY` 等。
-- **公网访问**：如需自定义域名，在 `.env` 设置 `DOMAIN=https://your-domain.com`；反向代理需支持 WebSocket（Gradio 实时通信）。
+- **公网访问**：在 `.env` 设置 `DOMAIN=https://你的域名或公网IP`；反向代理需支持 WebSocket（Gradio 实时通信）。
 
 ---
 

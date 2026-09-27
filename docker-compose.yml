@@ -2,11 +2,12 @@ version: '3.8'
 
 services:
   video-parser:
-    image: registry.cn-hangzhou.aliyuncs.com/chuchengzhi/video-parser:latest
+    build: .
+    image: video-parser:local
     container_name: video-parser
     restart: unless-stopped
     ports:
-      - "7860:7860"   # 统一服务端口 (FastAPI + Gradio)
+      - "127.0.0.1:7860:7860"   # 默认仅本机可访问；公网使用 HTTPS 反向代理
     volumes:
       # 持久化存储
       - ./static/videos:/app/static/videos
@@ -14,12 +15,17 @@ services:
       - ./downloads:/app/downloads
       - ./cache:/app/cache
       - ./logs:/app/logs
+      - ./data:/app/data
     # 从 .env 文件加载环境变量
     env_file:
       - .env
     environment:
       - TZ=Asia/Shanghai
       - PYTHONUNBUFFERED=1
+      - AUTH_DB_PATH=/app/data/auth.db
+      - REQUIRE_AUTH=1
+      - ALLOW_REGISTER=${ALLOW_REGISTER:-0}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-0}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
       interval: 30s

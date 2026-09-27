@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 from configs.logging_config import logger
 from configs.general_constants import DOMAIN_TO_NAME, USER_AGENT_PC, USER_AGENT_M
 from utils.web_fetcher import WebFetcher, UrlParser
+from utils.url_safety import fetch_public_response, open_public_stream
 from src.downloader_factory import DownloaderFactory
 
 load_dotenv()
@@ -27,6 +28,14 @@ load_dotenv()
 # 视频缓存目录（复用项目现有 cache 目录）
 _CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
 os.makedirs(_CACHE_DIR, exist_ok=True)
+
+
+def _max_video_bytes() -> int:
+    try:
+        limit_mb = int(os.getenv("MAX_VIDEO_DOWNLOAD_MB", "500"))
+    except ValueError:
+        limit_mb = 500
+    return max(1, limit_mb) * 1024 * 1024
 
 
 def fetch_content(url: str) -> dict | None:
@@ -281,16 +290,27 @@ def _download_file(url: str, headers: dict, filepath: str):
     temp_path = filepath + ".part"
     last_error = None
     for attempt in range(3):
+        response = None
         try:
-            response = requests.get(url, headers=headers, stream=True, timeout=(10, 60))
-            response.raise_for_status()
+            response = open_public_stream(url, headers=headers, timeout=(10, 60))
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > _max_video_bytes():
+                response.close()
+                raise requests.RequestException("视频超过单文件下载上限")
             with open(temp_path, 'wb') as f:
+                written = 0
                 for chunk in response.iter_content(chunk_size=1024 * 256):
                     if chunk:
+                        written += len(chunk)
+                        if written > _max_video_bytes():
+                            raise requests.RequestException("视频超过单文件下载上限")
                         f.write(chunk)
+            response.close()
             os.replace(temp_path, filepath)
             return
         except (requests.RequestException, OSError) as exc:
+            if response is not None:
+                response.close()
             last_error = exc
             logger.warning(f"[content_fetcher] download attempt {attempt + 1}/3 failed: {exc}")
             if os.path.exists(temp_path):
@@ -309,11 +329,10 @@ def _fetch_wechat_article(url: str) -> dict | None:
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=15)
+        response = fetch_public_response(url, headers=headers, timeout=15)
         response.encoding = response.apparent_encoding or 'utf-8'
-        response.raise_for_status()
-
         soup = BeautifulSoup(response.text, 'lxml')
+        response.close()
 
         # 公众号标题
         title_tag = soup.find('h1', id='activity-name') or soup.find('h1', class_='rich_media_title')
@@ -367,11 +386,10 @@ def _fetch_general_webpage(url: str) -> dict | None:
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=15)
+        response = fetch_public_response(url, headers=headers, timeout=15)
         response.encoding = response.apparent_encoding or 'utf-8'
-        response.raise_for_status()
-
         html = response.text
+        response.close()
 
         # 尝试使用 readability 提取正文
         try:
