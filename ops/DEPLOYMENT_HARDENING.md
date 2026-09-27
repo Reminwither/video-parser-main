@@ -10,12 +10,13 @@ Use HTTPS through a reverse proxy for public access. A domain with Caddy-managed
 4. Set `SESSION_COOKIE_SECURE=1` and `ALLOW_REGISTER=0` in the app environment, then restart the app after the proxy is serving HTTPS.
 5. Remove public firewall rules for 7860 and 7861. Keep only the ports required by the proxy and administration access.
 
-The current live deployment record describes a direct HTTP setup. It has not been changed by editing this repository; apply the proxy and firewall steps during a deployment window.
+The current server uses the public IP certificate, Caddy, and loopback-only app ports. Its admin panel is available through an SSH tunnel to port 7861.
 
 ## Persistence and cached videos
 
 - Mount `/app/data` to persistent storage. It contains `auth.db` and user accounts.
-- Back up the data directory before replacing containers. Restrict backup permissions because it contains account hashes and session records.
+- The current server runs `video-parser-auth-backup.timer` daily. It uses SQLite's online backup API, verifies the copy, stores it under `/var/backups/video-parser` with root-only permissions, and retains 14 copies. Install the files in `ops/backup/` on replacement servers.
+- Back up the data directory before replacing containers. Restrict backup permissions because it contains account hashes and session records. Add an off-server backup destination before relying on this server for irreplaceable data.
 - `MAX_VIDEO_DOWNLOAD_MB` defaults to 500 MB per cached video.
 - `VIDEO_RETENTION_DAYS=0` leaves cached videos untouched. Set a positive value, such as `30`, to delete server-cached `.mp4` files older than that many days at startup.
 - Keep `downloads`, `cache`, `logs`, `static/videos`, and `data` on a volume with monitoring and enough free space.
@@ -32,5 +33,5 @@ The current live deployment record describes a direct HTTP setup. It has not bee
 - Start the combined service with `python app.py`; it initializes session authentication when `REQUIRE_AUTH=1` or `APP_PASS` is set. Do not expose the standalone development API entry point.
 - Check `/health` locally and through the public HTTPS address after restart.
 - Back up `/app/data` before deployment and verify it remains present after container recreation.
-- The deployment workflows stop before replacing a container unless the HTTPS health check succeeds. Configure the main Caddy site first; the optional admin workflow requires its HTTPS `:8443` route before it can deploy.
+- The main deployment workflow stops before replacing a container unless the HTTPS health check succeeds. The admin workflow checks its existing loopback health endpoint before replacement.
 - Monitor disk usage and application logs; cached media and analysis caches may grow independently.

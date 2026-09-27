@@ -1,0 +1,6 @@
+[Unit]
+Description=Back up the video-parser authentication database
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/libexec/video-parser-backup-auth-db.py

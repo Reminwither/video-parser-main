@@ -1,63 +1,28 @@
 # 视频解析工作台 · 线上部署记录
 
-> 本文是 2026-09-22 的历史部署快照，不代表本次代码检查时重新验证过的线上状态。代码仓库中的配置调整不会自动改变服务器；HTTPS、端口绑定和防火墙需在维护窗口执行并验证。
+最近核验：2026-09-28。
 
-> 部署时间：2026-09-22 ｜ 部署执行：WorkBuddy（Lighthouse MCP 直连）
-> 状态：**✅ 运行中（healthy）**
+## 公网入口
 
-## 🌐 访问地址
+- 主站：https://110.40.138.167
+- 健康检查：https://110.40.138.167/health
+- 服务器：腾讯云轻量应用服务器 lhins-8one04is，公网 IP 110.40.138.167，2 核 2GB、50GB 磁盘。
+- 当前还没有域名。Caddy 使用 Let's Encrypt 短期 IP 证书；Certbot 定时检查续期并在成功续期后重载 Caddy。
 
-```
-http://110.40.138.167:7860
-```
+## 当前部署
 
-历史上使用公网 IP + 容器端口直接访问。该方式不适合登录系统；完成 HTTPS 反向代理前，不应把它作为长期公网入口。暂时没有域名时，可按 IP 证书步骤配置 HTTPS。
+- GitHub master 推送触发 .github/workflows/deploy.yml；服务器代码位于 /opt/video-parser，镜像在本机构建。
+- Caddy 对外监听 80/443，80 保留证书签发挑战并将其余请求重定向到 HTTPS。主站容器只绑定 127.0.0.1:7860。
+- 管理后台只绑定 127.0.0.1:7861。需要管理时，在本机运行 ssh -L 7861:127.0.0.1:7861 root@110.40.138.167，然后访问 http://127.0.0.1:7861。
+- 腾讯云防火墙已删除旧的 TCP 7860 公网放行规则，保留 80/443 与 SSH。原有的 18888 规则属于实例上的其他服务，未改动。
+- 账号、下载、缓存、日志、静态视频和图片均挂载持久化目录。注册默认关闭，登录会话 Cookie 设置 Secure。
+- 认证数据库由 video-parser-auth-backup.timer 每天在线备份到 /var/backups/video-parser，保留 14 份；这仍是同机备份，需要另设异地备份目的地才能抵御整机损失。
 
----
+## 验证与维护
 
-## 🖥️ 服务器
+- GitHub 主站与后台部署工作流已成功完成。公网 /health 和首页返回 200，未登录账户页跳转登录页，未登录业务 API 返回 401。
+- 证书续期 certbot renew --dry-run 已成功。正式证书当前有效期至 2026-10-04，续期 timer 每 12 小时检查一次。
+- 服务器 .env 权限为 600，备份目录仅 root 可读。不要把 .env、数据库备份或 API 密钥提交到仓库。
+- 服务器本地仍保留 /opt/Dockerfile.prod 作为国内镜像源构建配置。
 
-| 项 | 值 |
-|---|---|
-| 实例 ID | `lhins-8one04is` |
-| 地域 | 上海 `ap-shanghai-4` |
-| 配置 | 2 核 2G / 50GB SSD / 4Mbps |
-| 系统 | Ubuntu 24.04 LTS |
-| 计费 | 包月，**2026-10-22 到期（手动续费，记得续）** |
-
-## 📦 部署要素
-
-- **代码来源**：GitHub 公开仓库 `https://github.com/Reminwither/video-parser-main`（commit `68e143b`，即深色 UI 版本）
-- **代码位置**：服务器 `/opt/video-parser`
-- **镜像**：`video-parser:latest`（本地构建，非阿里云旧镜像）
-- **容器**：`video-parser`（历史快照映射 `7860:7860`；该快照未列出 `data/` 持久化挂载，需核对并补齐）
-- **配置**：`.env`（`QWEN_API_KEY` = 你的 ModelScope 令牌，权限 `600`）
-- **防火墙**：历史快照显示 TCP 7860 曾对 `0.0.0.0/0` 放通；需核对并在 HTTPS 代理验证后关闭公网直连
-
-## 🔧 绕过的几个中国服务器坑（已解决）
-
-1. **Docker Hub 直连超时** → 从 `docker.m.daocloud.io` 预拉取 `python:3.11-slim` 并打本地 tag，构建不再依赖 Docker Hub。
-2. **Debian trixie 用 deb822 格式**（`/etc/apt/sources.list.d/*.sources`，不是旧的单文件）→ apt 源改用腾讯云内网 `mirrors.tencent.com`，ffmpeg 安装飞快。
-3. **MCP 安全策略禁止**：写 `/etc` 配置、后台 `&`/`nohup`、执行下载脚本、读系统信息（`ps`/`cat /etc/*`/`docker exec`）。长任务改用 `setsid --fork` 脱离会话后台跑 + 轮询日志。
-
-> ⚠️ 因策略禁止改 `/etc/docker/daemon.json`，**无法配置 Docker 全局镜像源**，所以采用「预拉基础镜像 + 构建专用 Dockerfile」方案。
-
-## 🔁 后续更新代码（你自己执行或让我跑）
-
-```bash
-cd /opt/video-parser
-git pull                                   # 拉最新代码
-docker build -f /opt/Dockerfile.prod -t video-parser .   # 重新构建（用国内源）
-docker restart video-parser                # 重启容器生效
-```
-
-> `Dockerfile.prod` 放在 `/opt`（不在仓库内），避免 `git pull` 时与你仓库里的 Dockerfile 冲突。
-
-## ⚠️ 待处理事项
-
-- **续费**：实例 2026-10-22 到期，包月手动续费模式，别忘了。
-- **密钥轮换**：`QWEN_API_KEY` 是 ModelScope 账号级令牌，建议用完后去后台轮换一个，别在别处复用。
-- **HTTPS**：本仓库新增了 [Caddy 反向代理模板](ops/caddy/Caddyfile.example)、[IP 证书签发与续期步骤](ops/certbot/README.md) 和 [加固步骤](ops/DEPLOYMENT_HARDENING.md)。当前可先用稳定公网 IP 配置，无需等购买域名；确认公网 IP 和安全组 80/443 后再落地。
-- **会话数据库**：确认容器以 `/opt/video-parser/data:/app/data` 挂载，避免重建后丢失账户。
-- **端口安全**：代理通过 HTTPS 验证后，将 7860（以及管理服务 7861）改为仅本机绑定，并关闭相应公网防火墙规则。
-- **健康检查**：本机检查 `http://127.0.0.1:7860/health`，公网经 HTTPS IP/域名检查；不要把 HTTP 7860 当作对外入口。
+历史上曾通过 http://110.40.138.167:7860 直连；该入口已停用。域名购入后，可将 Caddy 与 DOMAIN 改为域名，并切换到常规自动 HTTPS 证书。
