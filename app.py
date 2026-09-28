@@ -1149,7 +1149,10 @@ THEME_SCRIPT = """
     if (pass2) { pass2.style.display = mode === 'register' ? '' : 'none'; pass2.required = mode === 'register'; }
     if (submit) submit.textContent = mode === 'register' ? d.modal_register_btn : d.modal_btn;
     if (footPre) footPre.textContent = mode === 'register' ? d.modal_register_foot_pre : d.modal_foot_pre;
-    if (toggle) toggle.textContent = mode === 'register' ? d.modal_register_foot_link : d.modal_foot_link;
+    if (toggle) {
+      toggle.textContent = mode === 'register' ? d.modal_register_foot_link : d.modal_foot_link;
+      toggle.setAttribute('href', mode === 'register' ? '/login' : '/register');
+    }
     if (msg) { msg.textContent = ''; msg.className = 'vp-modal-msg'; }
   };
   window.vpOpenLoginModal = function () {
