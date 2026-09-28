@@ -968,6 +968,8 @@ THEME_SCRIPT = """
       modal_title: "登录工作台", modal_sub: "视频解析 · AI 分析 · 多模态取证",
       modal_user: "用户名", modal_pass: "密码", modal_btn: "登 录", modal_loading: "登录中…",
       modal_foot_pre: "没有账号？", modal_foot_link: "立即注册",
+      modal_register_title: "创建账号", modal_register_btn: "创建账号",
+      modal_confirm_pass: "确认密码", modal_register_foot_pre: "已有账号？", modal_register_foot_link: "直接登录",
       warn_ffmpeg: "⚠️ 警告：未在系统中检测到 ffmpeg。B 站视频合并与 AI 内容提取可能无法运行。请安装 ffmpeg 并加入系统 PATH，或设置 FFMPEG_PATH 环境变量。",
       lang_btn: "EN",
       vp_in_url: "视频链接", vp_btn_parse: "解析视频", vp_dd_platform: "来源平台",
@@ -993,6 +995,8 @@ THEME_SCRIPT = """
       modal_title: "Sign in to workspace", modal_sub: "Video parsing · AI analysis · multimodal evidence",
       modal_user: "Username", modal_pass: "Password", modal_btn: "Sign in", modal_loading: "Signing in…",
       modal_foot_pre: "No account? ", modal_foot_link: "Sign up",
+      modal_register_title: "Create an account", modal_register_btn: "Create account",
+      modal_confirm_pass: "Confirm password", modal_register_foot_pre: "Already have an account? ", modal_register_foot_link: "Sign in",
       warn_ffmpeg: "⚠️ Warning: ffmpeg not found on this system. Bilibili merging and AI extraction may fail. Install ffmpeg and add it to PATH, or set FFMPEG_PATH.",
       lang_btn: "中文",
       vp_in_url: "Video URL", vp_btn_parse: "Parse Video", vp_dd_platform: "Source Platform",
@@ -1053,6 +1057,7 @@ THEME_SCRIPT = """
     });
     var lb = document.getElementById('vp-lang-btn');
     if (lb) lb.textContent = d.lang_btn;
+    if (window.vpSetAuthMode) window.vpSetAuthMode(window.__vp_auth_mode || 'login');
   }
   function vpToggleLang() {
     vpApplyLang(vpCurLang() === 'zh' ? 'en' : 'zh');
@@ -1104,25 +1109,65 @@ THEME_SCRIPT = """
   window.vpBindLoginModal = function () {
     var m = document.getElementById('vp-login-modal');
     if (!m || m.getAttribute('data-vp-bound') === '1') return m;
+    window.__vp_register_enabled = m.getAttribute('data-register-enabled') === 'true';
     var close = m.querySelector('#vp-modal-close');
     if (close) close.onclick = window.vpCloseLoginModal;
     m.onclick = function (e) { if (e.target === m) window.vpCloseLoginModal(); };
     var submit = m.querySelector('#vp-modal-submit');
     if (submit) submit.onclick = window.vpSubmitLogin;
+    var toggle = m.querySelector('#vp-modal-toggle');
+    if (toggle) {
+      toggle.style.display = window.__vp_register_enabled ? '' : 'none';
+      var footPre = m.querySelector('#vp-modal-foot-pre');
+      if (footPre && !window.__vp_register_enabled) footPre.style.display = 'none';
+      toggle.onclick = function (e) { e.preventDefault(); window.vpSetAuthMode(window.__vp_auth_mode === 'register' ? 'login' : 'register'); };
+    }
     var pass = m.querySelector('#vp-modal-pass');
     if (pass) pass.addEventListener('keydown', function (e) { if (e.key === 'Enter') window.vpSubmitLogin(); });
+    var pass2 = m.querySelector('#vp-modal-pass2');
+    if (pass2) pass2.addEventListener('keydown', function (e) { if (e.key === 'Enter') window.vpSubmitLogin(); });
     var user = m.querySelector('#vp-modal-user');
     if (user) user.addEventListener('keydown', function (e) { if (e.key === 'Enter') window.vpSubmitLogin(); });
     m.setAttribute('data-vp-bound', '1');
     return m;
   };
+  window.__vp_auth_mode = 'login';
+  window.vpSetAuthMode = function (mode) {
+    mode = mode === 'register' ? 'register' : 'login';
+    if (mode === 'register' && !window.__vp_register_enabled) return;
+    window.__vp_auth_mode = mode;
+    var d = VP_I18N[vpCurLang()] || VP_I18N.zh;
+    var title = document.querySelector('#vp-login-modal .vp-modal-title');
+    var pass = document.getElementById('vp-modal-pass');
+    var pass2 = document.getElementById('vp-modal-pass2');
+    var submit = document.getElementById('vp-modal-submit');
+    var footPre = document.getElementById('vp-modal-foot-pre');
+    var toggle = document.getElementById('vp-modal-toggle');
+    var msg = document.getElementById('vp-modal-msg');
+    if (title) title.textContent = mode === 'register' ? d.modal_register_title : d.modal_title;
+    if (pass) pass.autocomplete = mode === 'register' ? 'new-password' : 'current-password';
+    if (pass2) { pass2.style.display = mode === 'register' ? '' : 'none'; pass2.required = mode === 'register'; }
+    if (submit) submit.textContent = mode === 'register' ? d.modal_register_btn : d.modal_btn;
+    if (footPre) footPre.textContent = mode === 'register' ? d.modal_register_foot_pre : d.modal_foot_pre;
+    if (toggle) toggle.textContent = mode === 'register' ? d.modal_register_foot_link : d.modal_foot_link;
+    if (msg) { msg.textContent = ''; msg.className = 'vp-modal-msg'; }
+  };
   window.vpOpenLoginModal = function () {
     var m = window.vpBindLoginModal();
-    if (m) { m.style.display = 'flex'; var p = document.getElementById('vp-modal-pass'); if (p) { try { p.focus(); } catch (e) {} } }
+    if (m) {
+      window.vpSetAuthMode('login');
+      m.style.display = 'flex';
+      var p = document.getElementById('vp-modal-pass');
+      if (p) { try { p.focus(); } catch (e) {} }
+    }
   };
   window.vpCloseLoginModal = function () {
     var m = document.getElementById('vp-login-modal');
     if (m) m.style.display = 'none';
+    var pass = document.getElementById('vp-modal-pass');
+    var pass2 = document.getElementById('vp-modal-pass2');
+    if (pass) pass.value = '';
+    if (pass2) pass2.value = '';
     var msg = document.getElementById('vp-modal-msg');
     if (msg) { msg.textContent = ''; msg.className = 'vp-modal-msg'; }
     window.__vp_pending = null;   // 用户主动关弹窗 → 丢弃待续动作
@@ -1131,19 +1176,22 @@ THEME_SCRIPT = """
     var u = (document.getElementById('vp-modal-user') || {}).value || '';
     u = u.trim();
     var p = (document.getElementById('vp-modal-pass') || {}).value || '';
+    var p2 = (document.getElementById('vp-modal-pass2') || {}).value || '';
+    var isRegister = window.__vp_auth_mode === 'register';
     var msg = document.getElementById('vp-modal-msg');
     var btn = document.getElementById('vp-modal-submit');
     if (!u || !p) { if (msg) { msg.textContent = '请输入用户名和密码'; msg.className = 'vp-modal-msg err'; } return; }
-    if (btn) { btn.disabled = true; btn.textContent = '登录中…'; }
-    fetch('/api/auth/login', {
+    if (isRegister && p !== p2) { if (msg) { msg.textContent = '两次输入的密码不一致'; msg.className = 'vp-modal-msg err'; } return; }
+    if (btn) { btn.disabled = true; btn.textContent = isRegister ? '注册中…' : '登录中…'; }
+    fetch(isRegister ? '/api/auth/register' : '/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ username: u, password: p })
+      body: JSON.stringify({ username: u, password: p, password2: p2 })
     }).then(function (r) {
       return r.json().then(function (d) { return { ok: (r.ok && d.succ), d: d }; });
     }).then(function (o) {
-      if (btn) { btn.disabled = false; btn.textContent = '登 录'; }
+      if (btn) { btn.disabled = false; btn.textContent = isRegister ? '创建账号' : '登 录'; }
       if (o.ok) {
         window.__vp_logged_in = true;
         var link = document.querySelector('.vp-login-link');
@@ -1156,6 +1204,7 @@ THEME_SCRIPT = """
         // 注意顺序：先取 pending 再关弹窗——vpCloseLoginModal 会清空 __vp_pending。
         var pend = window.__vp_pending; window.__vp_pending = null;
         window.vpCloseLoginModal();
+        setTimeout(vpInitAuthUI, 150);
         if (pend) {
           var pb = document.getElementById('vp_btn_' + pend);
           if (pb) { setTimeout(function () { pb.click(); }, 350); }
@@ -1165,7 +1214,7 @@ THEME_SCRIPT = """
         msg.className = 'vp-modal-msg err';
       }
     }).catch(function () {
-      if (btn) { btn.disabled = false; btn.textContent = '登 录'; }
+      if (btn) { btn.disabled = false; btn.textContent = window.__vp_auth_mode === 'register' ? '创建账号' : '登 录'; }
       if (msg) { msg.textContent = '网络错误，请重试'; msg.className = 'vp-modal-msg err'; }
     });
   };
@@ -1380,8 +1429,8 @@ def create_app():
 
         # ===== 登录弹窗（访客可浏览；点功能按钮时弹出。随 gr.HTML 落入 .gradio-container，CSS 才生效） =====
         gr.HTML(
-            """
-            <div id="vp-login-modal" class="vp-modal-mask">
+            f"""
+            <div id="vp-login-modal" class="vp-modal-mask" data-register-enabled="{str(os.getenv('ALLOW_REGISTER', '0').strip().lower() in {'1', 'true', 'yes', 'on'}).lower()}">
               <div class="vp-modal-card">
                 <button id="vp-modal-close" class="vp-modal-x" type="button" aria-label="关闭">&times;</button>
                 <div class="vp-modal-brand"><span class="vp-modal-logo">VA</span>VidAI</div>
@@ -1389,9 +1438,10 @@ def create_app():
                 <div class="vp-modal-sub" data-i18n="modal_sub">视频解析 · AI 分析 · 多模态取证</div>
                 <input id="vp-modal-user" class="vp-modal-input" type="text" placeholder="用户名" data-i18n-ph="modal_user" autocomplete="username" />
                 <input id="vp-modal-pass" class="vp-modal-input" type="password" placeholder="密码" data-i18n-ph="modal_pass" autocomplete="current-password" />
+                <input id="vp-modal-pass2" class="vp-modal-input" type="password" placeholder="确认密码" data-i18n-ph="modal_confirm_pass" autocomplete="new-password" style="display:none" />
                 <button id="vp-modal-submit" class="vp-modal-btn" type="button" data-i18n="modal_btn">登 录</button>
                 <div id="vp-modal-msg" class="vp-modal-msg"></div>
-                <div class="vp-modal-foot"><span data-i18n="modal_foot_pre">没有账号？</span><a href="/register" data-i18n="modal_foot_link">立即注册</a></div>
+                <div class="vp-modal-foot"><span id="vp-modal-foot-pre" data-i18n="modal_foot_pre">没有账号？</span><a id="vp-modal-toggle" href="/register" data-i18n="modal_foot_link">立即注册</a></div>
               </div>
             </div>
             """

@@ -353,6 +353,60 @@ async def register_submit(request: Request):
     return resp
 
 
+@app.post("/api/auth/register")
+async def api_register(request: Request):
+    """JSON 注册接口，供首页登录弹窗在原页面内完成注册。"""
+    if not _allow_register():
+        return JSONResponse(status_code=403, content={
+            "retcode": 403, "succ": False, "retdesc": "当前暂未开放注册",
+        })
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={
+            "retcode": 400, "succ": False, "retdesc": "请求格式错误",
+        })
+
+    username = str((data or {}).get("username", "")).strip()
+    password = str((data or {}).get("password", ""))
+    password2 = str((data or {}).get("password2", ""))
+    if not username or not password:
+        return JSONResponse(status_code=400, content={
+            "retcode": 400, "succ": False, "retdesc": "请输入用户名和密码",
+        })
+    if password != password2:
+        return JSONResponse(status_code=400, content={
+            "retcode": 400, "succ": False, "retdesc": "两次输入的密码不一致",
+        })
+
+    ip = get_client_ip(request.scope)
+    if not auth_db.consume_daily_quota(
+        f"ip:{ip}", "register", max(1, int(os.getenv("REGISTER_PER_IP_DAILY", "3")))
+    ):
+        return JSONResponse(status_code=429, content={
+            "retcode": 429, "succ": False, "retdesc": "今日注册次数已达上限，请明天再试",
+        })
+    try:
+        user_id = auth_db.create_user(username, password)
+    except auth_db.AuthError as exc:
+        return JSONResponse(status_code=400, content={
+            "retcode": 400, "succ": False, "retdesc": str(exc),
+        })
+
+    user = auth_db.get_user_by_id(user_id)
+    token = auth_db.create_session(
+        user_id, ip=ip, user_agent=request.headers.get("user-agent", "")
+    )
+    response = JSONResponse(content={
+        "retcode": 0,
+        "succ": True,
+        "data": {"username": user["username"], "is_admin": bool(user.get("is_admin"))},
+    })
+    response.set_cookie(value=token, **auth_db.session_cookie_kwargs())
+    logger.info(f"注册成功（弹窗）: {username} from {ip}")
+    return response
+
+
 @app.get("/logout")
 async def logout(request: Request):
     cookie = request.cookies.get(auth_db.SESSION_COOKIE, "")
