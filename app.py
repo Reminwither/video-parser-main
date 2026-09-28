@@ -941,8 +941,19 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
         safe_id = "".join(c for c in str(video_id) if c.isalnum())[:30] or "video"
         export_base = f"{safe_id}_{int(time.time())}_{secrets.token_hex(6)}"
         report_path = os.path.join(reports_dir, export_base + ".md")
+        if evidence.raw_transcript:
+            transcript_appendix = (
+                "\n\n---\n\n## 附录：ASR 转写整理稿（机器生成，未人工校对）\n\n"
+                + (evidence.cleaned_transcript or "\n".join(cue.text for cue in evidence.raw_transcript)).strip()
+                + "\n"
+            )
+        else:
+            transcript_appendix = (
+                "\n\n---\n\n## ASR 转写状态\n\n"
+                f"本次未生成语音转写：{_asr_status_label(evidence.transcript_status)}。\n"
+            )
         with open(report_path, "w", encoding="utf-8", newline="\n") as report_file:
-            report_file.write(result)
+            report_file.write(result + transcript_appendix)
         asr_text_path = asr_srt_path = None
         if evidence.raw_transcript:
             asr_text_path = os.path.join(reports_dir, export_base + "_asr.txt")
