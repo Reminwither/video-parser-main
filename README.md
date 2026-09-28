@@ -179,10 +179,11 @@ vim .env  # 编辑配置
 | `SESSION_COOKIE_SECURE` | HTTPS 代理下启用安全 Cookie | `0`（HTTPS 部署设为 `1`） |
 | `MAX_VIDEO_DOWNLOAD_MB` | 单个服务端缓存视频上限 | `200` |
 | `VIDEO_RETENTION_DAYS` | 自动清理缓存视频天数；`0` 禁用 | `0` |
-| `ASR_MODEL_ID` | 可选的 OpenAI 兼容语音转写模型 | 未配置（诚实降级） |
-| `ASR_BACKEND` | `openai` 或本地 `faster-whisper` | `openai` |
+| `ASR_MODEL_ID` | ASR 模型标识；腾讯极速版使用 `tencent-flash` | 未配置（诚实降级） |
+| `ASR_BACKEND` | `openai`、`tencent-flash` 或本地 `faster-whisper` | `openai` |
+| `ASR_MAX_DURATION_SECONDS` | 单次 ASR 转写上限；可用于控制费用，超出部分会明确标记为未转写 | `0`（不限制） |
 | `ASR_LANGUAGE` | 可选语音语言提示，中文使用 `zh` | 无 |
-| `ASR_CHUNK_SECONDS` | 无句级时间戳时的音频分块对齐长度 | `0`（不分块） |
+| `ASR_CHUNK_SECONDS` | 无句级时间戳时的音频分块对齐长度；Tencent Flash 需保持 `0` | `0`（不分块） |
 
 > API 密钥获取地址：https://modelscope.cn/my/myaccesstoken
 

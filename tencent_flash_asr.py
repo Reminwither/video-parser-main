@@ -26,7 +26,9 @@ def transcribe(audio_path: str, speaker_diarization: bool = False) -> list[dict]
 
     params = {
         "engine_type": os.getenv("TENCENT_ASR_ENGINE", "16k_zh").strip() or "16k_zh",
-        "voice_format": "mp3",
+        # transcribe_audio extracts mono 16 kHz PCM and wraps it as a WAV file.
+        # Tencent validates this parameter against the uploaded bytes.
+        "voice_format": "wav",
         "timestamp": str(int(time.time())),
         "secretid": secret_id,
         "first_channel_only": "1",
