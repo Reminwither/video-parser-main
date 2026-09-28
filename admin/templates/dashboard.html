@@ -53,11 +53,25 @@
           <div class="col-auto"><i class="ti ti-folders fs-2 text-cyan"></i></div>
           <div class="col">
             <div class="font-weight-medium"><a href="{{ url_for('assets') }}">{{ s.asset_count }} 个资产</a></div>
-            <div class="text-muted">{{ s.asset_size_human }}</div>
+            <div class="text-muted">导出文件 {{ s.asset_size_human }}</div>
           </div>
         </div>
       </div>
     </div>
+  </div>
+</div>
+<div class="row row-deck row-cards mt-2">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card card-sm"><div class="card-body">
+      <div class="font-weight-medium fs-2">{{ s.cache_count }} 个缓存文件</div>
+      <div class="text-muted">视频与 ASR 缓存 {{ s.cache_size_human }}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card card-sm"><div class="card-body">
+      <div class="font-weight-medium fs-2 {{ 'text-danger' if s.disk_low else '' }}">{{ s.disk_free_human }}</div>
+      <div class="text-muted">服务器剩余空间{% if s.disk_low %} · 已低于 2 GB 处理门槛{% endif %}</div>
+    </div></div>
   </div>
 </div>
 

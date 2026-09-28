@@ -25,6 +25,7 @@ import mimetypes
 import json
 import re
 import threading
+import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import unquote
@@ -38,6 +39,7 @@ from flask import (
 # ===================== 配置 =====================
 AUTH_DB_PATH = os.getenv("AUTH_DB_PATH", "/opt/video-parser/data/auth.db")
 ASSETS_DIR = os.getenv("ASSETS_DIR", "/opt/video-parser/downloads")
+CACHE_DIR = os.getenv("CACHE_DIR", "/opt/video-parser/cache")
 LOGS_DIR = os.getenv("LOGS_DIR", "/opt/video-parser/logs")
 ASR_CACHE_DIR = os.getenv("ASR_CACHE_DIR", "/opt/video-parser/cache/asr")
 PORT = int(os.getenv("PORT", "7861"))
@@ -208,16 +210,32 @@ def get_stats():
         c.close()
     except Exception as e:
         stats["error"] = str(e)
-    # 资产统计
+    # 导出与缓存分别统计，避免把大体积的视频缓存遗漏在容量看板之外。
     try:
-        files = list(Path(ASSETS_DIR).rglob("*"))
-        files = [f for f in files if f.is_file()]
-        stats["asset_count"] = len(files)
-        stats["asset_size"] = sum(f.stat().st_size for f in files)
+        files = (f for f in Path(ASSETS_DIR).rglob("*") if f.is_file() and not f.is_symlink())
+        stats["asset_count"] = stats["asset_size"] = 0
+        for file in files:
+            stats["asset_count"] += 1
+            stats["asset_size"] += file.stat().st_size
         stats["asset_size_human"] = human_size(stats["asset_size"])
     except Exception:
         stats["asset_count"] = 0
         stats["asset_size"] = 0
+        stats["asset_size_human"] = "—"
+    try:
+        files = (f for f in Path(CACHE_DIR).rglob("*") if f.is_file() and not f.is_symlink())
+        stats["cache_count"] = stats["cache_size"] = 0
+        for file in files:
+            stats["cache_count"] += 1
+            stats["cache_size"] += file.stat().st_size
+        stats["cache_size_human"] = human_size(stats["cache_size"])
+        disk = shutil.disk_usage(CACHE_DIR)
+        stats["disk_free_human"] = human_size(disk.free)
+        stats["disk_low"] = disk.free < 2 * 1024 * 1024 * 1024
+    except Exception:
+        stats["cache_count"] = stats["cache_size"] = 0
+        stats["cache_size_human"] = stats["disk_free_human"] = "—"
+        stats["disk_low"] = False
     return stats
 
 

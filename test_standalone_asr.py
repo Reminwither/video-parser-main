@@ -156,6 +156,26 @@ class StandaloneAsrTests(unittest.TestCase):
             self.assertIn("独立转写完成", rendered)
             self.assertIn("自有视频上传完成", rendered)
 
+    def test_admin_reports_cache_and_disk_separately(self):
+        admin_app = importlib.import_module("admin.app")
+        with tempfile.TemporaryDirectory() as output_dir:
+            downloads = os.path.join(output_dir, "downloads")
+            cache = os.path.join(output_dir, "cache")
+            os.makedirs(downloads)
+            os.makedirs(cache)
+            with open(os.path.join(downloads, "report.md"), "wb") as file:
+                file.write(b"report")
+            with open(os.path.join(cache, "video.mp4"), "wb") as file:
+                file.write(b"video cache")
+            with patch.object(admin_app, "ASSETS_DIR", downloads), \
+                 patch.object(admin_app, "CACHE_DIR", cache), \
+                 patch.object(admin_app, "AUTH_DB_PATH", os.path.join(output_dir, "missing.db")):
+                stats = admin_app.get_stats()
+            self.assertEqual(stats["asset_count"], 1)
+            self.assertEqual(stats["cache_count"], 1)
+            self.assertGreater(stats["cache_size"], stats["asset_size"])
+            self.assertIn("disk_free_human", stats)
+
 
 if __name__ == "__main__":
     unittest.main()
