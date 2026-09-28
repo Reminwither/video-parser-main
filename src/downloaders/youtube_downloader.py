@@ -110,7 +110,7 @@ class YoutubeDownloader(BaseDownloader):
             "retries": 3,
             "extractor_retries": 5,
             "source_address": "0.0.0.0",
-            "nocheckcertificate": True,
+            "max_filesize": max(1, int(os.getenv("MAX_VIDEO_DOWNLOAD_MB", "200"))) * 1024 * 1024,
         }
         ffmpeg_path = os.getenv("FFMPEG_PATH", "").strip()
         if ffmpeg_path and ffmpeg_path.lower() != "ffmpeg":
