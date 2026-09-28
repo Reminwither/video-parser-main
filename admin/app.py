@@ -300,6 +300,53 @@ def get_usage_stats():
     return data
 
 
+def get_funnel_stats():
+    """Seven-day distinct-user funnel; deleted and admin accounts are excluded."""
+    data = {"ready": False, "registered": 0, "started": 0, "completed": 0,
+            "returned": 0, "new_completed": 0, "started_completed": 0,
+            "registration_rate": None, "completion_rate": None}
+    try:
+        c = ro_conn()
+        since = "date('now', '-6 days')"
+        data["registered"] = c.execute(
+            f"SELECT COUNT(*) FROM users WHERE is_admin=0 AND substr(created_at,1,10)>={since}"
+        ).fetchone()[0]
+        data["started"] = c.execute(
+            f"SELECT COUNT(DISTINCT a.user_id) FROM user_activity a JOIN users u ON u.id=a.user_id "
+            f"WHERE u.is_admin=0 AND a.day>={since} AND a.action IN ('parse_success','upload_success')"
+        ).fetchone()[0]
+        data["completed"] = c.execute(
+            f"SELECT COUNT(DISTINCT a.user_id) FROM user_activity a JOIN users u ON u.id=a.user_id "
+            f"WHERE u.is_admin=0 AND a.day>={since} AND a.action='analysis_success'"
+        ).fetchone()[0]
+        data["started_completed"] = c.execute(
+            f"SELECT COUNT(DISTINCT a.user_id) FROM user_activity a JOIN users u ON u.id=a.user_id "
+            f"WHERE u.is_admin=0 AND a.day>={since} AND a.action='analysis_success' AND EXISTS ("
+            f"SELECT 1 FROM user_activity b WHERE b.user_id=a.user_id AND b.day>={since} "
+            f"AND b.action IN ('parse_success','upload_success'))"
+        ).fetchone()[0]
+        data["new_completed"] = c.execute(
+            f"SELECT COUNT(DISTINCT u.id) FROM users u JOIN user_activity a ON a.user_id=u.id "
+            f"WHERE u.is_admin=0 AND substr(u.created_at,1,10)>={since} "
+            f"AND a.day>={since} AND a.action='analysis_success'"
+        ).fetchone()[0]
+        data["returned"] = c.execute(
+            f"SELECT COUNT(*) FROM (SELECT a.user_id FROM user_activity a JOIN users u ON u.id=a.user_id "
+            f"WHERE u.is_admin=0 AND a.day>={since} AND a.action IN "
+            f"('parse_success','upload_success','transcribe_success','analysis_success') "
+            f"GROUP BY a.user_id HAVING COUNT(DISTINCT a.day)>=2)"
+        ).fetchone()[0]
+        c.close()
+    except sqlite3.Error:
+        return data
+    data["ready"] = True
+    if data["registered"]:
+        data["registration_rate"] = round(100 * data["new_completed"] / data["registered"], 1)
+    if data["started"]:
+        data["completion_rate"] = round(100 * data["started_completed"] / data["started"], 1)
+    return data
+
+
 def get_resource_stats():
     """Seven-day provider units and a clearly bounded paid-provider scenario."""
     data = {"ready": False, "model_calls": 0, "model_failed": 0,
@@ -497,6 +544,7 @@ def logout():
 @require_admin
 def dashboard():
     return render_template("dashboard.html", s=get_stats(), m=get_usage_stats(), r=get_resource_stats(),
+                           f=get_funnel_stats(),
                            user=flask_session.get("admin_user"))
 
 

@@ -14,7 +14,7 @@
           <div class="col-auto"><i class="ti ti-users fs-2 text-blue"></i></div>
           <div class="col">
             <div class="font-weight-medium"><a href="{{ url_for('users') }}">{{ s.total_users }} 个账号</a></div>
-            <div class="text-muted">注册用户总数</div>
+            <div class="text-muted">全部账号（含管理员）</div>
           </div>
         </div>
       </div>
@@ -73,6 +73,29 @@
       <div class="text-muted">服务器剩余空间{% if s.disk_low %} · 已低于 2 GB 处理门槛{% endif %}</div>
     </div></div>
   </div>
+</div>
+
+<div class="row row-cards mt-2">
+  <div class="col-12"><div class="card">
+    <div class="card-header"><h3 class="card-title">用户完成路径 · 近 7 天</h3></div>
+    <div class="card-body">
+      {% if f.ready %}
+      <div class="row gy-3">
+        <div class="col-sm-6 col-lg-3"><div class="fs-2 fw-bold">{{ f.registered }}</div><div class="text-muted">新注册普通用户</div></div>
+        <div class="col-sm-6 col-lg-3"><div class="fs-2 fw-bold">{{ f.started }}</div><div class="text-muted">成功解析或上传的用户</div></div>
+        <div class="col-sm-6 col-lg-3"><div class="fs-2 fw-bold">{{ f.completed }}</div><div class="text-muted">完成 AI 报告的用户</div></div>
+        <div class="col-sm-6 col-lg-3"><div class="fs-2 fw-bold">{{ f.returned }}</div><div class="text-muted">至少两天完成过处理的用户</div></div>
+      </div>
+      <div class="mt-3">新用户完成首份报告：<strong>{{ f.registration_rate ~ '%' if f.registration_rate is not none else '—' }}</strong>
+        <span class="text-muted">（{{ f.new_completed }}/{{ f.registered }}）</span>；
+        开始处理后完成报告：<strong>{{ f.completion_rate ~ '%' if f.completion_rate is not none else '—' }}</strong>
+        <span class="text-muted">（{{ f.started_completed }}/{{ f.started }}）</span>。</div>
+      <div class="text-muted mt-2">按 UTC 自本版本起记录成功操作；仅统计仍在册的普通用户，删除账号后其记录同步清除。以上为独立用户数，后台既不保存原始视频链接，也不保存报告内容。</div>
+      {% else %}
+      <div class="text-muted">等待主站创建用户完成路径数据表。</div>
+      {% endif %}
+    </div>
+  </div></div>
 </div>
 
 <div class="row row-cards mt-2">

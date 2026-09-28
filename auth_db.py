@@ -162,6 +162,14 @@ def init_db() -> None:
                 submitted_audio_ms INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (day, provider, operation, model)
             );
+            CREATE TABLE IF NOT EXISTS user_activity (
+                day TEXT NOT NULL,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                action TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (day, user_id, action)
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_activity_action_day ON user_activity(action, day);
             CREATE TABLE IF NOT EXISTS uploaded_files (
                 path TEXT NOT NULL,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -262,6 +270,24 @@ def record_usage(action: str, platform: str, outcome: str, reason: str = "", dur
             c.commit()
     except sqlite3.Error:
         _LOG.exception("Unable to record usage metric")
+
+
+def record_user_activity(user_id: int, action: str) -> None:
+    """Record a successful product milestone without storing links or content."""
+    if action not in {"parse_success", "upload_success", "transcribe_success", "analysis_success"}:
+        return
+    try:
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        with _DB_LOCK:
+            c = _db()
+            c.execute(
+                "INSERT INTO user_activity(day, user_id, action, count) VALUES (?, ?, ?, 1) "
+                "ON CONFLICT(day, user_id, action) DO UPDATE SET count = count + 1",
+                (day, int(user_id), action),
+            )
+            c.commit()
+    except (sqlite3.Error, TypeError, ValueError):
+        _LOG.exception("Unable to record user activity")
 
 
 def record_resource_usage(

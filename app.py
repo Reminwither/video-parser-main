@@ -203,6 +203,12 @@ def max_video_download_bytes() -> int:
     return max(1, limit_mb) * 1024 * 1024
 
 
+def _media_transfer_message(error: Exception, action: str) -> str:
+    if isinstance(error, ValueError) and str(error).startswith("视频超过单文件下载上限"):
+        return f"视频超过 {max_video_download_bytes() // (1024 * 1024)} MB 处理上限，请选择较短视频"
+    return f"{action}失败，请检查来源链接是否仍有效或稍后重试"
+
+
 def max_upload_bytes() -> int:
     """Keep user uploads below the existing media cap and a 200 MiB single-file ceiling."""
     return min(max_video_download_bytes(), 200 * 1024 * 1024)
@@ -296,9 +302,9 @@ class VideoClient:
             else:
                 return False, {}, result.get('retdesc', '解析失败')
 
-        except Exception as e:
-            print(f"解析出错: {e}")
-            return False, {}, f"解析出错: {str(e)}"
+        except Exception:
+            logging.exception("Video client parse failed")
+            return False, {}, "解析暂时失败，请检查链接是否有效或稍后重试"
 
     async def get_download_url(self, video_url: str, video_id: str, original_url: str = "") -> Optional[str]:
         """获取下载链接"""
@@ -384,12 +390,13 @@ class VideoClient:
             size_mb = os.path.getsize(filepath) / 1024 / 1024
             return True, filepath, f"下载完成 ({size_mb:.1f} MB)"
 
-        except Exception as e:
+        except Exception as error:
             if response is not None:
                 response.close()
             if os.path.exists(filepath):
                 os.remove(filepath)
-            return False, "", f"下载失败: {str(e)}"
+            logging.exception("Video file download failed")
+            return False, "", _media_transfer_message(error, "下载")
 
     def merge_video_audio(self, video_path: str, audio_path: str,
                           output_path: str) -> Tuple[bool, str]:
@@ -411,9 +418,11 @@ class VideoClient:
                 os.remove(audio_path)
                 return True, "合并成功"
             else:
-                return False, f"合并失败: {result.stderr}"
+                logging.error("FFmpeg media merge failed: %s", result.stderr[-2000:])
+                return False, "音视频合并失败，请稍后重试"
         except FileNotFoundError:
-            return False, "未找到 ffmpeg，请确保已安装 ffmpeg 并添加到系统 PATH 中，或设置 FFMPEG_PATH 环境变量。"
+            logging.exception("FFmpeg is unavailable")
+            return False, "音视频处理服务暂时不可用，请稍后重试"
 
 
 # ==================== Gradio 界面函数 ====================
@@ -483,6 +492,8 @@ def parse_video(url: str, platform: str, request: gr.Request = None) -> tuple:
             return "今日解析次数已用完，请明天再试", _info_bar_html("今日解析次数已用完", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
         import asyncio
         status, info, cover, video_url, guide, video_info = asyncio.run(_async_parse_video(url, platform, user["id"]))
+        if video_info:
+            auth_db.record_user_activity(user["id"], "parse_success")
         auth_db.record_usage(
             "parse", video_info.get("platform", metric_platform) if video_info else metric_platform,
             "success" if video_info else "failed", "" if video_info else "upstream",
@@ -566,6 +577,7 @@ def upload_owned_video(file_path: str | None, platform: str, request: gr.Request
     selected = platform if platform in ("抖音", "哔哩哔哩", "小红书", "视频号") else "自有视频"
     video_info = {"platform": selected, "title": source.stem[:80], "video_id": cache_key,
                   "_cache_key": cache_key, "_uploaded": True, "duration": media.duration}
+    auth_db.record_user_activity(user["id"], "upload_success")
     auth_db.record_usage("upload", selected, "success")
     return (f"上传完成 - {selected}", _info_bar_html(source.stem[:80], selected, ok=True),
             gr.update(value=None, visible=False), "", "", video_info,
@@ -776,14 +788,15 @@ async def _async_play_video(progress, video_info: dict) -> Tuple[str, str]:
             else:
                 return None, f"合并失败: {msg}"
 
-        except Exception as e:
+        except Exception as error:
             if response is not None:
                 response.close()
             # 清理临时文件
             for temp_file in [video_temp, audio_temp, merged_temp]:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
-            return None, f"加载失败: {str(e)}"
+            logging.exception("Video and audio track loading failed")
+            return None, _media_transfer_message(error, "视频加载")
 
     else:
         # 其他平台直接下载视频
@@ -813,12 +826,13 @@ async def _async_play_video(progress, video_info: dict) -> Tuple[str, str]:
             progress(1.0, desc="加载完成")
             return cache_path, "加载完成"
 
-        except Exception as e:
+        except Exception as error:
             if response is not None:
                 response.close()
             if os.path.exists(temporary_path):
                 os.remove(temporary_path)
-            return None, f"加载失败: {str(e)}"
+            logging.exception("Video loading failed")
+            return None, _media_transfer_message(error, "视频加载")
 
 
 def download_video(video_info: dict, progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str]:
@@ -1056,6 +1070,7 @@ def transcribe_video_only(video_info: dict | None = None, progress=gr.Progress()
         text_path, srt_path = _save_asr_exports(
             user["id"], video_info.get("video_id", "video"), cues, transcript_status, readable, [warning] if warning else []
         )
+        auth_db.record_user_activity(user["id"], "transcribe_success")
         auth_db.record_usage("transcribe", platform, "success", duration_ms=int((time.monotonic() - started) * 1000))
         preview = html.escape(readable[:12000])
         if len(readable) > 12000:
@@ -1159,14 +1174,14 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
                 )
             except OSError:
                 status += "；ASR 转写文件保存失败"
+        auth_db.record_user_activity(user["id"], "analysis_success")
         auth_db.record_usage("analysis", metric_platform, "success", duration_ms=int((time.monotonic() - started) * 1000))
         return _analysis_result(result, status, report_path, asr_text_path, asr_srt_path)
 
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
+    except Exception:
+        logging.exception("Video analysis failed")
         auth_db.record_usage("analysis", metric_platform, "failed", "error", int((time.monotonic() - started) * 1000))
-        return _analysis_result("", f"提取失败: {str(e)}")
+        return _analysis_result(REPORT_PLACEHOLDER, "分析暂时失败，请稍后重试；持续出现时请联系站点管理员")
     finally:
         _ANALYSIS_SLOTS.release()
 
