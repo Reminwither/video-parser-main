@@ -51,6 +51,7 @@ SAVE_IMAGE_PATH = os.path.join(static_dir, "images")
 # 业务常量
 DOMAIN_TO_NAME = business_config["DOMAIN_TO_NAME"]
 PLATFORM_MAP = business_config["PLATFORM_MAP"]
+PRIMARY_VIDEO_PLATFORMS = ("抖音", "哔哩哔哩", "小红书", "视频号")
 MINI_PROGRAM_LEGAL_DOMAIN = business_config["MINI_PROGRAM_LEGAL_DOMAIN"]
 USER_AGENT_PC = business_config["USER_AGENT_PC"]
 USER_AGENT_M = business_config["USER_AGENT_M"]

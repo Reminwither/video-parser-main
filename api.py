@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 视频解析下载 API 服务 (FastAPI 版本)
-支持抖音、哔哩哔哩、小红书、快手、好看视频等平台
+核心平台：抖音、哔哩哔哩、小红书、微信视频号
 """
 
 import os
@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from configs.logging_config import logger
 from configs.general_constants import (
-    DOMAIN_TO_NAME, MINI_PROGRAM_LEGAL_DOMAIN,
+    DOMAIN_TO_NAME, MINI_PROGRAM_LEGAL_DOMAIN, PRIMARY_VIDEO_PLATFORMS,
     SAVE_VIDEO_PATH, DOMAIN, check_essential_dirs
 )
 from utils.web_fetcher import WebFetcher, UrlParser
@@ -200,7 +200,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="视频解析下载 API",
-    description="支持抖音、哔哩哔哩、小红书、快手、好看视频等平台的视频解析下载服务",
+    description="平台范围：抖音、哔哩哔哩、小红书、微信视频号（视频号媒体解析通道尚未接入）",
     version="2.0.0",
     lifespan=lifespan
 )
@@ -596,6 +596,20 @@ async def parse_video(
             return JSONResponse(
                 status_code=400,
                 content=make_response(400, '该链接尚未支持提取', None, None, False)
+            )
+
+        if platform == '视频号':
+            message = '已识别为微信视频号链接，但当前服务器尚未接入视频号媒体解析通道'
+            return JSONResponse(
+                status_code=501,
+                content=make_response(501, message, None, None, False)
+            )
+
+        if platform not in PRIMARY_VIDEO_PLATFORMS:
+            message = '当前平台范围为抖音、B站、小红书和视频号；请粘贴这四个平台的公开分享链接'
+            return JSONResponse(
+                status_code=400,
+                content=make_response(400, message, None, None, False)
             )
 
         title = cover_url = video_url = None

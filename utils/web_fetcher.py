@@ -22,9 +22,8 @@ class WebFetcher:
                 host = (urlparse(current_url).hostname or "").lower().rstrip(".")
                 supported_roots = (
                     "douyin.com", "iesdouyin.com", "bilibili.com", "b23.tv",
-                    "xiaohongshu.com", "xhslink.com", "kuaishou.com",
-                    "haokan.baidu.com", "haokan.hao123.com", "weishi.qq.com",
-                    "pearvideo.com", "pipigx.com", "youtube.com", "youtu.be",
+                    "xiaohongshu.com", "xhslink.com",
+                    "weixin.qq.com", "channels.weixin.qq.com",
                 )
                 if not any(host == root or host.endswith("." + root) for root in supported_roots):
                     return None

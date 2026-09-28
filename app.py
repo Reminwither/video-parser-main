@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 视频解析下载 Gradio 应用
-支持抖音、哔哩哔哩、小红书、快手、好看视频的解析下载和在线播放
+核心平台：抖音、B站、小红书、微信视频号
 """
 
 import os
@@ -161,19 +161,16 @@ def clean_url(url: str) -> str:
 
 def detect_platform(url: str) -> str:
     """根据 URL 自动检测平台"""
-    url_lower = url.lower()
-    if 'douyin.com' in url_lower or 'iesdouyin.com' in url_lower:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if (host == "weixin.qq.com" and parsed.path.startswith("/sph/")) or host == "channels.weixin.qq.com":
+        return "视频号"
+    if host in {"douyin.com", "www.douyin.com", "v.douyin.com", "iesdouyin.com", "www.iesdouyin.com"}:
         return "抖音"
-    elif 'bilibili.com' in url_lower or 'b23.tv' in url_lower:
+    elif host == "b23.tv" or host == "bilibili.com" or host.endswith(".bilibili.com"):
         return "哔哩哔哩"
-    elif 'xiaohongshu.com' in url_lower or 'xhslink.com' in url_lower:
+    elif host == "xhslink.com" or host.endswith(".xhslink.com") or host == "xiaohongshu.com" or host.endswith(".xiaohongshu.com"):
         return "小红书"
-    elif 'kuaishou.com' in url_lower:
-        return "快手"
-    elif 'haokan.baidu.com' in url_lower:
-        return "好看视频"
-    elif 'pearvideo.com' in url_lower:
-        return "梨视频"
     return "自动检测"
 
 
@@ -452,6 +449,10 @@ def parse_video(url: str, platform: str, request: gr.Request = None) -> tuple:
     user = _vp_session_from_request(request)
     if not user:
         return "🔒 请先登录后再使用此功能 / Please sign in first", _info_bar_html("请先登录 / Please sign in", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
+    platform_issue = _platform_issue(url, platform)
+    if platform_issue:
+        message, title, badge = platform_issue
+        return message, _info_bar_html(title, badge, ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
     if not _PARSE_SLOTS.acquire(blocking=False):
         return "当前解析任务较多，请稍后重试", _info_bar_html("当前解析任务较多", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
     try:
@@ -473,13 +474,14 @@ async def _async_parse_video(url: str, platform: str) -> tuple:
         return "请输入视频链接", _info_bar_html("请输入视频链接", "", ok=False), None, "", EMPTY_GUIDE_HTML, {}
 
     url = url.strip()
+    platform_issue = _platform_issue(url, platform)
+    if platform_issue:
+        message, title, badge = platform_issue
+        return message, _info_bar_html(title, badge, ok=False), None, "", EMPTY_GUIDE_HTML, {}
 
-    # 自动检测平台
+    detected = detect_platform(url)
     if platform == "自动检测":
-        detected = detect_platform(url)
-        if detected == "自动检测":
-            detected = "未知平台"
-        platform = detected
+        platform = detected if detected != "自动检测" else "未知平台"
 
     success, data, message = await client.parse_video(url)
 
@@ -516,6 +518,25 @@ async def _async_parse_video(url: str, platform: str) -> tuple:
         return status, _info_bar_html(title, platform_name, ok=True), cover_local_path, video_url, "", video_info
     else:
         return f"解析失败: {message}", _info_bar_html("解析失败：" + message, "", ok=False), None, "", EMPTY_GUIDE_HTML, {}
+
+
+def _platform_issue(url: str, platform: str) -> Optional[tuple[str, str, str]]:
+    """Reject mismatched choices and video-number links before charging parse quota."""
+    detected = detect_platform(url) if url else "自动检测"
+    if platform != "自动检测" and detected != "自动检测" and detected != platform:
+        return (
+            f"链接识别为{detected}，但当前选择的是{platform}；请切换平台或使用自动检测",
+            "平台选择与链接不一致",
+            "",
+        )
+    selected = detected if platform == "自动检测" else platform
+    if selected == "视频号":
+        return (
+            "已识别为微信视频号链接，但当前服务器尚未接入视频号媒体解析通道。抖音、B站和小红书可继续解析。",
+            "视频号解析通道尚未接入",
+            "视频号",
+        )
+    return None
 
 
 def play_video(video_info: dict, progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str]:
@@ -960,7 +981,7 @@ THEME_SCRIPT = """
       empty_head: "等待视频解析",
       empty_desc: "在左侧粘贴视频链接并点击「解析视频」，即可在此生成封面与在线播放",
       empty_s1: "粘贴链接", empty_s2: "解析视频", empty_s3: "AI 取证",
-      help_t1: "粘贴链接", help_d1: "可尝试哔哩哔哩、梨视频及其他支持的平台分享链接；受平台访问限制影响的链接可能无法解析",
+      help_t1: "粘贴链接", help_d1: "平台范围：抖音、B站、小红书、视频号。受来源平台访问限制影响，部分链接可能无法解析；视频号媒体解析通道仍在接入。",
       help_t2: "解析视频", help_d2: "封面、时长与视频信息一屏展示，无需手动选择来源",
       help_t3: "播放 / 下载", help_d3: "在线播放使用临时缓存；可下载平台提供的媒体流（B 站自动合并音视频）",
       help_t4: "AI 取证分析", help_d4: "字幕 / 音频 / 画面逐段时间轴取证，支持多人转写输出分组稿",
@@ -987,7 +1008,7 @@ THEME_SCRIPT = """
       empty_head: "Awaiting video",
       empty_desc: "Paste a link on the left and click Parse to generate cover and online playback here.",
       empty_s1: "Paste link", empty_s2: "Parse", empty_s3: "AI Evidence",
-      help_t1: "Paste link", help_d1: "Try Bilibili, Pear Video, or another supported source. Some links may be blocked by platform access rules.",
+      help_t1: "Paste link", help_d1: "Platforms: Douyin, Bilibili, Xiaohongshu, and WeChat Channels. Some links may be blocked by source restrictions; WeChat Channels media extraction is not connected yet.",
       help_t2: "Parse", help_d2: "Cover, duration and video info shown on one screen, no manual source selection",
       help_t3: "Play / Download", help_d3: "Playback uses temporary cache; downloads use the source media stream (Bilibili audio and video are merged)",
       help_t4: "AI Evidence", help_d4: "Timeline evidence from subtitles / audio / frames, with multi-speaker grouped transcripts",
@@ -1295,17 +1316,9 @@ def clear_all():
 
 # ==================== Gradio 界面 ====================
 
-# 示例视频链接
-EXAMPLE_URLS = {
-    "哔哩哔哩": "https://www.bilibili.com/video/BV1TaqYBcEJc",
-    "梨视频": "https://www.pearvideo.com/video_1795870",
-}
-
-
-def fill_example(platform: str):
-    """填充示例链接"""
-    url = EXAMPLE_URLS.get(platform, "")
-    return url, platform
+def select_platform(platform: str):
+    """切换平台选择，同时保留用户已粘贴的链接。"""
+    return platform
 
 
 def check_ffmpeg() -> bool:
@@ -1483,7 +1496,7 @@ def create_app():
                 gr.HTML('<div class="vp-section-label"><span class="vp-section-num">01</span><span data-i18n="sec_parse">解析视频</span></div>')
                 url_input = gr.Textbox(
                     label="视频链接",
-                    placeholder="粘贴公开视频分享链接，例如 B 站或梨视频…",
+                    placeholder="粘贴抖音、B站、小红书或视频号分享链接…",
                     lines=3,
                     elem_id="vp_in_url",
                     elem_classes=["vp-url"]
@@ -1497,16 +1510,18 @@ def create_app():
 
                 gr.HTML('<div class="vp-divider"></div>')
 
-                # 示例链接（轻量文字 chips）
+                # 四个平台入口：点击只选择来源平台，不会覆盖用户已粘贴的链接。
                 with gr.Row():
-                    bilibili_btn = gr.Button("哔哩哔哩", size="sm", elem_classes=["example-btn"])
-                    pear_btn = gr.Button("梨视频", size="sm", elem_classes=["example-btn"])
+                    douyin_btn = gr.Button("抖音", size="sm", elem_classes=["example-btn"])
+                    bilibili_btn = gr.Button("B站", size="sm", elem_classes=["example-btn"])
+                    xiaohongshu_btn = gr.Button("小红书", size="sm", elem_classes=["example-btn"])
+                    wechat_channels_btn = gr.Button("视频号", size="sm", elem_classes=["example-btn"])
 
                 # 平台选择与清空（次级）
                 with gr.Row(equal_height=True):
                     platform_dropdown = gr.Dropdown(
                         label="来源平台",
-                        choices=["自动检测", "哔哩哔哩", "梨视频", "抖音", "小红书", "快手", "好看视频"],
+                        choices=["自动检测", "抖音", "哔哩哔哩", "小红书", "视频号"],
                         value="自动检测",
                         interactive=True,
                         elem_id="vp_dd_platform",
@@ -1594,17 +1609,18 @@ def create_app():
         video_url_state = gr.State("")
         video_info_state = gr.State({})
 
-        # 示例链接按钮事件绑定
-        bilibili_btn.click(
-            fn=lambda: fill_example("哔哩哔哩"),
-            inputs=[],
-            outputs=[url_input, platform_dropdown]
-        )
-        pear_btn.click(
-            fn=lambda: fill_example("梨视频"),
-            inputs=[],
-            outputs=[url_input, platform_dropdown]
-        )
+        # 平台 chips 只切换来源选择，不替换输入框里的链接。
+        for button, platform_name in (
+            (douyin_btn, "抖音"),
+            (bilibili_btn, "哔哩哔哩"),
+            (xiaohongshu_btn, "小红书"),
+            (wechat_channels_btn, "视频号"),
+        ):
+            button.click(
+                fn=lambda value=platform_name: select_platform(value),
+                inputs=[],
+                outputs=[platform_dropdown],
+            )
 
         # 事件绑定
         parse_btn.click(
@@ -1652,7 +1668,7 @@ def create_app():
                 <div class="vp-help-item">
                   <div class="vp-help-step">01</div>
                   <div class="vp-help-title" data-i18n="help_t1">粘贴链接</div>
-                  <div class="vp-help-desc" data-i18n="help_d1">可尝试哔哩哔哩、梨视频及其他支持的平台分享链接；受平台访问限制影响的链接可能无法解析</div>
+                  <div class="vp-help-desc" data-i18n="help_d1">平台范围：抖音、B站、小红书、视频号。受来源平台访问限制影响，部分链接可能无法解析；视频号媒体解析通道仍在接入。</div>
                 </div>
                 <div class="vp-help-item">
                   <div class="vp-help-step">02</div>
