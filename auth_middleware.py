@@ -59,6 +59,8 @@ def _requires_login_json(path: str) -> bool:
         return False
     if path.startswith("/api/"):
         return True
+    if path == "/gradio_api/upload":
+        return True
     if path.startswith("/static/videos/") or path.startswith("/gradio_api/file=") or path.startswith("/file="):
         return True
     return False
@@ -81,11 +83,17 @@ class SessionAuthMiddleware:
         session = auth_db.get_session_user(token) if token else None
 
         if session:
-            action = {"/api/parse": ("parse", 30), "/api/download": ("download", 10)}.get(path)
+            action = {
+                "/api/parse": ("parse", 30),
+                "/api/download": ("download", 10),
+                "/gradio_api/upload": ("upload_http", 5),
+            }.get(path)
             if scope.get("type") == "http" and scope.get("method") == "POST" and action:
                 name, default_limit = action
-                limit = max(0, int(os.getenv(f"DAILY_{name.upper()}_LIMIT", str(default_limit))))
-                site_limit = max(0, int(os.getenv(f"DAILY_SITE_{name.upper()}_LIMIT", "300" if name == "parse" else "50")))
+                config_name = "upload" if name == "upload_http" else name
+                site_default = {"parse": 300, "download": 50, "upload": 30}[config_name]
+                limit = max(0, int(os.getenv(f"DAILY_{config_name.upper()}_LIMIT", str(default_limit))))
+                site_limit = max(0, int(os.getenv(f"DAILY_SITE_{config_name.upper()}_LIMIT", str(site_default))))
                 if not auth_db.consume_daily_quotas([
                     (f"user:{session['id']}", name, limit), ("site", name, site_limit),
                 ]):

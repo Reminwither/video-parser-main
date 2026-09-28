@@ -18,6 +18,7 @@ import threading
 import requests
 import subprocess
 import tempfile
+from pathlib import Path
 import gradio as gr
 from typing import Optional, Tuple
 from starlette.types import ASGIApp, Scope, Receive, Send
@@ -199,6 +200,11 @@ def max_video_download_bytes() -> int:
     except ValueError:
         limit_mb = 500
     return max(1, limit_mb) * 1024 * 1024
+
+
+def max_upload_bytes() -> int:
+    """Keep user uploads below the existing media cap and a 200 MiB single-file ceiling."""
+    return min(max_video_download_bytes(), 200 * 1024 * 1024)
 
 class VideoClient:
     """视频解析下载客户端"""
@@ -430,7 +436,7 @@ _TRANSCRIBE_SLOTS = threading.BoundedSemaphore(max(1, int(os.getenv("MAX_CONCURR
 
 def _allow_user_action(user: dict, action: str, default_limit: int) -> bool:
     limit = max(0, int(os.getenv(f"DAILY_{action.upper()}_LIMIT", str(default_limit))))
-    site_default = {"parse": 300, "play": 50, "download": 50, "analysis": 10, "transcribe": 30}[action]
+    site_default = {"parse": 300, "upload": 30, "play": 50, "download": 50, "analysis": 10, "transcribe": 30}[action]
     site_limit = max(0, int(os.getenv(f"DAILY_SITE_{action.upper()}_LIMIT", str(site_default))))
     return auth_db.consume_daily_quotas([
         (f"user:{user['id']}", action, limit),
@@ -490,6 +496,71 @@ def parse_video_for_ui(url: str, platform: str, request: gr.Request = None) -> t
     """Clear prior media and exports whenever a new link is submitted."""
     result = parse_video(url, platform, request)
     return (*result, gr.update(value=None, visible=False), gr.update(value=None, visible=False),
+            REPORT_PLACEHOLDER, gr.update(value=None, visible=False),
+            gr.update(value=None, visible=False), gr.update(value=None, visible=False),
+            gr.update(value=None))
+
+
+def upload_owned_video(file_path: str | None, platform: str, request: gr.Request = None) -> tuple:
+    """Import an owned MP4 for the same playback, ASR and analysis workflow."""
+    empty = (gr.update(value=None, visible=False), "", EMPTY_GUIDE_HTML, {},
+             gr.update(value=None, visible=False), gr.update(value=None, visible=False),
+             REPORT_PLACEHOLDER, gr.update(value=None, visible=False),
+             gr.update(value=None, visible=False), gr.update(value=None, visible=False))
+
+    def rejected(message: str, outcome: str = "invalid", reason: str = "") -> tuple:
+        auth_db.record_usage("upload", platform, outcome, reason)
+        return (message, _info_bar_html(message, "", ok=False), *empty)
+
+    user = _vp_session_from_request(request)
+    if not user:
+        return ("🔒 请先登录后再上传", _info_bar_html("请先登录", "", ok=False), *empty)
+    if not file_path:
+        return rejected("请先选择 MP4 视频文件")
+    try:
+        from gradio.utils import get_upload_folder
+        source = Path(file_path).resolve(strict=True)
+        upload_root = Path(get_upload_folder()).resolve(strict=True)
+        if os.path.commonpath([source, upload_root]) != str(upload_root) or source.suffix.lower() != ".mp4":
+            return rejected("只接受通过页面上传的 MP4 视频")
+        file_size = source.stat().st_size
+        if not 0 < file_size <= max_upload_bytes():
+            return rejected(f"视频大小需在 1 字节至 {max_upload_bytes() // (1024 * 1024)} MB 之间")
+        if shutil.disk_usage(client.cache_dir).free < 2 * 1024 * 1024 * 1024 + file_size:
+            return rejected("服务器存储空间不足，请稍后重试", "failed", "error")
+        media = inspect_video(str(source))
+        max_duration = max(1, int(os.getenv("MAX_UPLOAD_DURATION_SECONDS", "1800")))
+        if media.width <= 0 or media.height <= 0 or not 0 < media.duration <= max_duration:
+            return rejected(f"请上传时长不超过 {max_duration // 60} 分钟的有效 MP4 视频")
+    except (OSError, ValueError, RuntimeError):
+        logging.exception("Uploaded video validation failed")
+        return rejected("视频文件无法读取，请检查格式后重试")
+    if not _TRANSFER_SLOTS.acquire(blocking=False):
+        return rejected("当前视频加载任务较多，请稍后重试", "busy")
+    try:
+        if not _allow_user_action(user, "upload", 5):
+            return rejected("今日视频上传次数已用完，请明天再试", "quota")
+        cache_key = secrets.token_hex(16)
+        cache_path = Path(client.cache_dir) / f"{cache_key}_play.mp4"
+        temporary_path = cache_path.with_suffix(".part")
+        try:
+            shutil.copyfile(source, temporary_path)
+            if temporary_path.stat().st_size != file_size:
+                raise OSError("upload copy size mismatch")
+            os.replace(temporary_path, cache_path)
+        except OSError:
+            temporary_path.unlink(missing_ok=True)
+            logging.exception("Uploaded video cache copy failed")
+            return rejected("视频保存失败，请稍后重试", "failed", "error")
+    finally:
+        _TRANSFER_SLOTS.release()
+    selected = platform if platform in ("抖音", "哔哩哔哩", "小红书", "视频号") else "自有视频"
+    video_info = {"platform": selected, "title": source.stem[:80], "video_id": cache_key,
+                  "_cache_key": cache_key, "_uploaded": True, "duration": media.duration}
+    auth_db.record_usage("upload", selected, "success")
+    return (f"上传完成 - {selected}", _info_bar_html(source.stem[:80], selected, ok=True),
+            gr.update(value=None, visible=False), "", "", video_info,
+            gr.update(value=str(cache_path), visible=True), gr.update(value=str(cache_path), visible=True),
             REPORT_PLACEHOLDER, gr.update(value=None, visible=False),
             gr.update(value=None, visible=False), gr.update(value=None, visible=False))
 
@@ -557,7 +628,7 @@ def _platform_issue(url: str, platform: str) -> Optional[tuple[str, str, str]]:
     selected = detected if platform == "自动检测" else platform
     if selected == "视频号":
         return (
-            "已识别为微信视频号链接，但当前服务器尚未接入视频号媒体解析通道。抖音、B站和小红书可继续解析。",
+            "已识别为微信视频号链接，但暂不能直接解析。可在下方上传本人有权使用的 MP4 视频。",
             "视频号解析通道尚未接入",
             "视频号",
         )
@@ -601,6 +672,11 @@ async def _async_play_video(progress, video_info: dict) -> Tuple[str, str]:
     platform = video_info.get('platform', '')
     original_url = video_info.get('original_url', '')
 
+    cache_path = os.path.join(client.cache_dir, f"{_video_cache_key(video_info)}_play.mp4")
+    if video_info.get("_uploaded"):
+        if os.path.isfile(cache_path) and os.path.getsize(cache_path) > 0:
+            return cache_path, "加载完成（使用已上传视频）"
+        return None, "上传的视频已过期，请重新上传"
     if not video_url:
         return None, "未找到视频链接"
 
@@ -772,6 +848,11 @@ async def _async_download_video(progress, video_info: dict) -> Tuple[str, str]:
     platform = video_info.get('platform', '')
     original_url = video_info.get('original_url', '')
 
+    if video_info.get("_uploaded"):
+        cache_path = os.path.join(client.cache_dir, f"{_video_cache_key(video_info)}_play.mp4")
+        if os.path.isfile(cache_path) and os.path.getsize(cache_path) > 0:
+            return cache_path, "已提供上传的视频原文件"
+        return None, "上传的视频已过期，请重新上传"
     if not video_url:
         return None, "未找到视频链接"
 
@@ -1159,12 +1240,12 @@ THEME_SCRIPT = """
       nav_login: "登录", nav_start: "开始使用", nav_logout: "退出",
       hero_eyebrow: "视频智能分析平台",
       hero_title_a: "解析 · 下载 · ", hero_title_b: "AI 取证",
-      hero_sub: "粘贴公开视频链接，解析可访问的媒体资源，播放或下载，并按时间轴生成多模态证据报告。不同平台的可用性取决于其访问限制。",
+      hero_sub: "粘贴公开视频链接或上传有权使用的 MP4，随后播放、下载、转写或生成时间轴证据报告。链接可用性取决于来源平台的访问限制。",
       sec_parse: "解析视频", sec_preview: "预览", sec_report: "分析与转写结果", sec_help: "使用指南",
       empty_head: "等待视频解析",
-      empty_desc: "在左侧粘贴视频链接并点击「解析视频」，即可在此生成封面与在线播放",
+      empty_desc: "在左侧解析视频链接或上传自有 MP4，即可在此预览",
       empty_s1: "粘贴链接", empty_s2: "解析视频", empty_s3: "AI 取证",
-      help_t1: "粘贴链接", help_d1: "平台范围：抖音、B站、小红书、视频号。受来源平台访问限制影响，部分链接可能无法解析；视频号媒体解析通道仍在接入。",
+      help_t1: "粘贴链接或上传", help_d1: "抖音、B站和小红书可用分享链接；视频号链接暂不能直接解析，可上传有权使用的 MP4。",
       help_t2: "解析视频", help_d2: "封面、时长与视频信息一屏展示，无需手动选择来源",
       help_t3: "播放 / 下载", help_d3: "在线播放使用临时缓存；可下载平台提供的媒体流（B 站自动合并音视频）",
       help_t4: "转写 / AI 分析", help_d4: "可单独导出语音转写 TXT / SRT，或按时间轴分析字幕、音频和画面",
@@ -1178,6 +1259,7 @@ THEME_SCRIPT = """
       lang_btn: "EN",
       vp_in_url: "视频链接", vp_btn_parse: "解析视频", vp_dd_platform: "来源平台",
       vp_btn_clear: "清空", vp_btn_play: "在线播放", vp_btn_download: "下载视频",
+      vp_upload_input: "上传自有 MP4（视频号素材可用）", vp_btn_upload: "使用上传的视频",
       vp_chk_speaker: "多人转写（AI 分析）", vp_btn_extract: "AI 时间轴证据分析",
       vp_btn_transcribe: "仅语音转写 · 导出 TXT / SRT",
       vp_out_status: "状态", vp_vid: "在线播放", vp_img_cover: "视频封面", vp_file: "下载文件"
@@ -1187,12 +1269,12 @@ THEME_SCRIPT = """
       nav_login: "Sign in", nav_start: "Get started", nav_logout: "Sign out",
       hero_eyebrow: "Video Intelligence Platform",
       hero_title_a: "Parse · Download · ", hero_title_b: "AI Evidence",
-      hero_sub: "Paste a public video link to parse an accessible media stream, play or download it, and generate a timeline evidence report. Availability depends on the source platform.",
+      hero_sub: "Paste a public video link or upload an MP4 you have rights to use, then play, download, transcribe or analyze it. Link availability depends on the source platform.",
       sec_parse: "Parse Video", sec_preview: "Preview", sec_report: "Analysis & Transcript", sec_help: "Guide",
       empty_head: "Awaiting video",
-      empty_desc: "Paste a link on the left and click Parse to generate cover and online playback here.",
+      empty_desc: "Parse a link or upload your MP4 on the left to preview it here.",
       empty_s1: "Paste link", empty_s2: "Parse", empty_s3: "AI Evidence",
-      help_t1: "Paste link", help_d1: "Platforms: Douyin, Bilibili, Xiaohongshu, and WeChat Channels. Some links may be blocked by source restrictions; WeChat Channels media extraction is not connected yet.",
+      help_t1: "Paste or upload", help_d1: "Douyin, Bilibili and Xiaohongshu accept share links. WeChat Channels links are not extracted yet; upload an MP4 you have rights to use.",
       help_t2: "Parse", help_d2: "Cover, duration and video info shown on one screen, no manual source selection",
       help_t3: "Play / Download", help_d3: "Playback uses temporary cache; downloads use the source media stream (Bilibili audio and video are merged)",
       help_t4: "Transcript / AI", help_d4: "Export a standalone TXT / SRT transcript or analyze subtitle, audio and frame evidence on a timeline",
@@ -1206,6 +1288,7 @@ THEME_SCRIPT = """
       lang_btn: "中文",
       vp_in_url: "Video URL", vp_btn_parse: "Parse Video", vp_dd_platform: "Source Platform",
       vp_btn_clear: "Clear", vp_btn_play: "Play Online", vp_btn_download: "Download Video",
+      vp_upload_input: "Upload your MP4 (Channels supported)", vp_btn_upload: "Use uploaded video",
       vp_chk_speaker: "Multi-speaker (AI analysis)", vp_btn_extract: "AI Timeline Evidence",
       vp_btn_transcribe: "Transcribe only · Export TXT / SRT",
       vp_out_status: "Status", vp_vid: "Online Playback", vp_img_cover: "Cover", vp_file: "Download File"
@@ -1215,10 +1298,18 @@ THEME_SCRIPT = """
   var VP_COMP_SEL = {
     vp_in_url: "label", vp_btn_parse: "button", vp_dd_platform: "label",
     vp_btn_clear: "button", vp_btn_play: "button", vp_btn_download: "button",
+    vp_upload_input: "label", vp_btn_upload: "button",
     vp_chk_speaker: "label", vp_btn_extract: "button", vp_btn_transcribe: "button", vp_out_status: "label",
     vp_vid: "label", vp_img_cover: "label", vp_file: "label"
   };
   function vpCurLang() { return window.__vp_lang || 'zh'; }
+  document.addEventListener('click', function (event) {
+    if (!window.__vp_logged_in && event.target.closest && event.target.closest('#vp_upload_input')) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (window.vpOpenLoginModal) window.vpOpenLoginModal();
+    }
+  }, true);
   function vpApplyLang(l) {
     try { localStorage.setItem('vp-lang', l); } catch (e) {}
     window.__vp_lang = l;
@@ -1498,7 +1589,7 @@ def clear_all():
             gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
             REPORT_PLACEHOLDER, gr.update(value=None, visible=False),
             gr.update(value=None, visible=False), gr.update(value=None, visible=False),
-            EMPTY_GUIDE_HTML, {})
+            EMPTY_GUIDE_HTML, {}, gr.update(value=None))
 
 
 # ==================== Gradio 界面 ====================
@@ -1591,6 +1682,7 @@ def create_app():
 
     with gr.Blocks(
         title="VidAI · 视频智能分析平台",
+        delete_cache=(3600, 48 * 3600),
     ) as app:
 
         # ===== 顶部导航（照抄 TikHub：吸顶透明起始，滚动后毛玻璃 + 细边框过渡出现） =====
@@ -1683,7 +1775,7 @@ def create_app():
                 gr.HTML('<div class="vp-section-label"><span class="vp-section-num">01</span><span data-i18n="sec_parse">解析视频</span></div>')
                 url_input = gr.Textbox(
                     label="视频链接",
-                    placeholder="粘贴抖音、B站、小红书或视频号分享链接…",
+                    placeholder="粘贴抖音、B站或小红书分享链接…",
                     lines=3,
                     elem_id="vp_in_url",
                     elem_classes=["vp-url"]
@@ -1716,6 +1808,17 @@ def create_app():
                         scale=1,
                     )
                     clear_btn = gr.Button("清空", variant="secondary", size="lg", scale=1, elem_classes=["vp-ghost"], elem_id="vp_btn_clear")
+
+                upload_input = gr.File(
+                    label="上传自有 MP4（视频号素材可用）", file_types=[".mp4"], type="filepath",
+                    elem_id="vp_upload_input",
+                )
+                upload_btn = gr.Button("使用上传的视频", variant="secondary", elem_id="vp_btn_upload")
+                upload_minutes = max(1, int(os.getenv("MAX_UPLOAD_DURATION_SECONDS", "1800"))) / 60
+                gr.Markdown(
+                    f"视频号分享链接暂不能直接解析。可先从本人有权使用的素材导出 MP4 再上传"
+                    f"（最多 {max_upload_bytes() // (1024 * 1024)} MB、{upload_minutes:g} 分钟）。"
+                )
 
                 gr.HTML('<div class="vp-divider"></div>')
 
@@ -1824,7 +1927,16 @@ def create_app():
             js=GATE_JS,
             inputs=[url_input, platform_dropdown],
             outputs=[status_output, title_bar, cover_output, video_url_state, guide_html, video_info_state,
-                     video_output, download_output, content_output, report_file_output, asr_text_output, asr_srt_output]
+                     video_output, download_output, content_output, report_file_output, asr_text_output, asr_srt_output,
+                     upload_input]
+        )
+
+        upload_btn.click(
+            fn=upload_owned_video,
+            js=_gate_js("upload"),
+            inputs=[upload_input, platform_dropdown],
+            outputs=[status_output, title_bar, cover_output, video_url_state, guide_html, video_info_state,
+                     video_output, download_output, content_output, report_file_output, asr_text_output, asr_srt_output],
         )
 
         play_btn.click(
@@ -1850,7 +1962,7 @@ def create_app():
 
         transcribe_btn.click(
             fn=transcribe_video_only,
-            js=_gate_js("extract"),
+            js=_gate_js("transcribe"),
             inputs=[video_info_state],
             outputs=[content_output, status_output, report_file_output, asr_text_output, asr_srt_output]
         )
@@ -1861,7 +1973,7 @@ def create_app():
             outputs=[url_input, platform_dropdown, status_output, title_bar,
                     cover_output, video_output, download_output, content_output,
                     report_file_output, asr_text_output, asr_srt_output,
-                    guide_html, video_info_state]
+                    guide_html, video_info_state, upload_input]
         )
 
         # 使用指南（双列横向卡，打破同构小卡网格）
@@ -1872,8 +1984,8 @@ def create_app():
               <div class="vp-help-grid">
                 <div class="vp-help-item">
                   <div class="vp-help-step">01</div>
-                  <div class="vp-help-title" data-i18n="help_t1">粘贴链接</div>
-                  <div class="vp-help-desc" data-i18n="help_d1">平台范围：抖音、B站、小红书、视频号。受来源平台访问限制影响，部分链接可能无法解析；视频号媒体解析通道仍在接入。</div>
+                  <div class="vp-help-title" data-i18n="help_t1">粘贴链接或上传</div>
+                  <div class="vp-help-desc" data-i18n="help_d1">抖音、B站和小红书可用分享链接；视频号链接暂不能直接解析，可上传有权使用的 MP4。</div>
                 </div>
                 <div class="vp-help-item">
                   <div class="vp-help-step">02</div>
@@ -2095,6 +2207,7 @@ if __name__ == "__main__":
             api_app, app, path="/",
             theme=_theme,
             head=HEAD_CONTENT,
+            max_file_size=max_upload_bytes(),
         )
     except TypeError:
         app.theme = _theme

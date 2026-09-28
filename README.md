@@ -29,6 +29,7 @@ models: #关联模型
 - **证据优先分析**：按时间轴对齐画面、字幕与可选 ASR，再区分原始证据、释义和推论
 - **报告导出**：分析完成后可下载 Markdown 报告，便于归档和分享
 - **独立 ASR 转写**：解析后可直接转写，无需运行 AI 分析；结果可在页面预览并下载 TXT 整理稿和保留原始识别时间戳的 SRT 字幕。分析报告也附完整转写或明确的缺失原因；管理后台可查看历史 ASR 缓存与七日转写指标
+- **自有 MP4 上传**：视频号分享链接仍无法直接提取；登录用户可上传有权使用的 MP4，随后预览、转写与分析。单文件最多 200 MB、30 分钟，受每日配额限制；后台单独统计上传，不计入平台链接解析成功率
 - **Web 界面**：基于 Gradio 的友好操作界面
 - **RESTful API**：标准化接口，支持二次开发
 - **自动文档**：FastAPI 自动生成 Swagger/ReDoc 文档
@@ -175,9 +176,10 @@ vim .env  # 编辑配置
 | `VISION_BATCH_SIZE` | 每批视觉观察帧数 | `6` |
 | `ALLOW_REGISTER` | 是否开放自助注册 | `0` |
 | `MAX_REGISTERED_USERS` / `REGISTER_PER_IP_DAILY` | 注册总人数 / 单 IP 每日注册上限 | `200` / `3` |
-| `DAILY_PARSE_LIMIT` / `DAILY_PLAY_LIMIT` / `DAILY_DOWNLOAD_LIMIT` / `DAILY_ANALYSIS_LIMIT` / `DAILY_TRANSCRIBE_LIMIT` | 单账号每日操作次数上限（UTC 日） | `30` / `10` / `10` / `2` / `5` |
-| `DAILY_SITE_PARSE_LIMIT` / `DAILY_SITE_PLAY_LIMIT` / `DAILY_SITE_DOWNLOAD_LIMIT` / `DAILY_SITE_ANALYSIS_LIMIT` / `DAILY_SITE_TRANSCRIBE_LIMIT` | 全站每日操作次数上限（UTC 日） | `300` / `50` / `50` / `10` / `30` |
+| `DAILY_PARSE_LIMIT` / `DAILY_UPLOAD_LIMIT` / `DAILY_PLAY_LIMIT` / `DAILY_DOWNLOAD_LIMIT` / `DAILY_ANALYSIS_LIMIT` / `DAILY_TRANSCRIBE_LIMIT` | 单账号每日操作次数上限（UTC 日） | `30` / `5` / `10` / `10` / `2` / `5` |
+| `DAILY_SITE_PARSE_LIMIT` / `DAILY_SITE_UPLOAD_LIMIT` / `DAILY_SITE_PLAY_LIMIT` / `DAILY_SITE_DOWNLOAD_LIMIT` / `DAILY_SITE_ANALYSIS_LIMIT` / `DAILY_SITE_TRANSCRIBE_LIMIT` | 全站每日操作次数上限（UTC 日） | `300` / `30` / `50` / `50` / `10` / `30` |
 | `MAX_CONCURRENT_PARSE` / `MAX_CONCURRENT_TRANSFER` / `MAX_CONCURRENT_ANALYSIS` / `MAX_CONCURRENT_TRANSCRIBE` | 全站同时运行的任务数 | `3` / `2` / `1` / `1` |
+| `MAX_UPLOAD_DURATION_SECONDS` | 自有 MP4 上传的最长视频时长 | `1800`（30 分钟）；单文件最多 200 MB |
 | `SESSION_COOKIE_SECURE` | HTTPS 代理下启用安全 Cookie | `0`（HTTPS 部署设为 `1`） |
 | `MAX_VIDEO_DOWNLOAD_MB` | 单个服务端缓存视频上限 | `200` |
 | `VIDEO_RETENTION_DAYS` | 自动清理缓存视频天数；`0` 禁用 | `0` |

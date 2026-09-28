@@ -7,7 +7,7 @@ Use HTTPS through a reverse proxy for public access. A domain with Caddy-managed
 1. For a domain, point its DNS `A` record at the server. For an IP certificate, use the server's stable public IPv4 address and follow `ops/certbot/README.md`. Allow inbound TCP 80 and 443.
 2. Merge the matching site blocks from `ops/caddy/Caddyfile.example` into the active Caddy configuration, preserving unrelated sites. For a domain, Caddy can obtain and renew certificates automatically; for an IP, Certbot issues and renews the short-lived certificate and its deploy hook reloads Caddy.
 3. Bind the app container to `127.0.0.1:7860:7860` and the optional admin container to `127.0.0.1:7861:7861`.
-4. Set `SESSION_COOKIE_SECURE=1` and `ALLOW_REGISTER=0` in the app environment, then restart the app after the proxy is serving HTTPS.
+4. Set `SESSION_COOKIE_SECURE=1` after HTTPS is active. Choose `ALLOW_REGISTER=1` for public trials; the current production site has registration enabled. Restart the app after changing either setting.
 5. Remove public firewall rules for 7860 and 7861. Keep only the ports required by the proxy and administration access.
 
 The current server uses the public IP certificate, Caddy, and loopback-only app ports. Its admin panel is available at `https://110.40.138.167/admin/` through the same HTTPS proxy.
@@ -15,10 +15,10 @@ The current server uses the public IP certificate, Caddy, and loopback-only app 
 ## Persistence and cached videos
 
 - Mount `/app/data` to persistent storage. It contains `auth.db` and user accounts.
-- The current server runs `video-parser-auth-backup.timer` daily. It uses SQLite's online backup API, verifies the copy, stores it under `/var/backups/video-parser` with root-only permissions, and retains 14 copies. Install the files in `ops/backup/` on replacement servers.
+- The current server runs `video-parser-auth-backup.timer` daily. It uses SQLite's online backup API, verifies the copy, stores it under `/var/backups/video-parser` with root-only permissions, and retains 14 copies. Install the files in `ops/backup/` on replacement servers. Off-server backup is still required before broad public release.
 - Back up the data directory before replacing containers. Restrict backup permissions because it contains account hashes and session records. Add an off-server backup destination before relying on this server for irreplaceable data.
 - `MAX_VIDEO_DOWNLOAD_MB` defaults to 500 MB per cached video.
-- `VIDEO_RETENTION_DAYS=0` leaves cached videos untouched. Set a positive value, such as `30`, to delete server-cached `.mp4` files older than that many days at startup.
+- `VIDEO_RETENTION_DAYS=0` disables the additional startup purge. The current server's daily `video-parser-cleanup.timer` still removes generated files after about 48 hours.
 - Keep `downloads`, `cache`, `logs`, `static/videos`, and `data` on a volume with monitoring and enough free space.
 
 ## Registration and cross-origin clients
