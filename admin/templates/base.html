@@ -24,7 +24,9 @@
               <a class="nav-link" href="{{ url_for('assets') }}"><i class="ti ti-folder nav-link-icon"></i>资产记录库</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link" href="{{ url_for('logout') }}"><i class="ti ti-logout nav-link-icon"></i>退出登录</a>
+              <form method="post" action="{{ url_for('logout') }}" class="nav-item">
+                <button type="submit" class="nav-link border-0 bg-transparent w-100 text-start"><i class="ti ti-logout nav-link-icon"></i>退出登录</button>
+              </form>
             </li>
             <li class="nav-item">
               <a class="nav-link" href="/"><i class="ti ti-external-link nav-link-icon"></i>返回主站</a>

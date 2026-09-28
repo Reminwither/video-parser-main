@@ -10,4 +10,4 @@ COPY templates/ ./templates/
 COPY static/ ./static/
 
 EXPOSE 7861
-CMD ["python", "app.py"]
+CMD ["gunicorn", "--workers=1", "--threads=8", "--timeout=60", "--graceful-timeout=30", "--access-logfile=-", "--error-logfile=-", "--bind=0.0.0.0:7861", "app:app"]

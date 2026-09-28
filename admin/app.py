@@ -98,6 +98,11 @@ def protect_admin_response(response):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; base-uri 'self'; form-action 'self'; "
+        "frame-ancestors 'none'; object-src 'none'; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:"
+    )
     return response
 
 
@@ -316,7 +321,7 @@ def login():
     return render_template("login.html", error=None)
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
     flask_session.clear()
     return redirect(url_for("login"))
@@ -360,7 +365,14 @@ def asset_file(p):
     if not target.is_file():
         abort(404)
     mt, _ = mimetypes.guess_type(str(target))
-    return send_file(str(target), mimetype=mt, as_attachment=False)
+    # Only browser-native videos are safe to display inline. HTML/SVG and other
+    # user-controlled assets must download so they cannot execute on this origin.
+    return send_file(
+        str(target),
+        mimetype=mt or "application/octet-stream",
+        as_attachment=target.suffix.lower() not in VIDEO_EXT,
+        download_name=target.name,
+    )
 
 
 @app.route("/health")
