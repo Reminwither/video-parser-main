@@ -63,7 +63,35 @@ jobs:
 
             echo "==> [2/4] 用国内镜像重新构建镜像"
             # /opt/Dockerfile.prod 是服务器本地的「换国内源 + tuna pip」构建文件
-            docker build -f /opt/Dockerfile.prod -t video-parser .
+            docker build -f /opt/Dockerfile.prod -t video-parser:candidate .
+
+            start_container() {
+              docker run -d \
+                --name video-parser \
+                --restart unless-stopped \
+                -p 127.0.0.1:7860:7860 \
+                --env-file /opt/video-parser/.env \
+                -e APP_USER=admin \
+                -e APP_PASS \
+                -e REQUIRE_AUTH=1 \
+                -e SESSION_COOKIE_SECURE=1 \
+                -v /opt/video-parser/static/videos:/app/static/videos \
+                -v /opt/video-parser/static/images:/app/static/images \
+                -v /opt/video-parser/downloads:/app/downloads \
+                -v /opt/video-parser/cache:/app/cache \
+                -v /opt/video-parser/logs:/app/logs \
+                -v /opt/video-parser/data:/app/data \
+                "$1"
+            }
+
+            rollback() {
+              echo "New release failed; restoring previous image"
+              docker logs --tail 60 video-parser 2>/dev/null || true
+              docker stop video-parser 2>/dev/null || true
+              docker rm video-parser 2>/dev/null || true
+              start_container video-parser:latest || true
+              exit 1
+            }
 
             echo "==> [3/4] 停掉旧容器"
             docker stop video-parser || true
@@ -71,22 +99,7 @@ jobs:
 
             echo "==> [4/4] 启动容器（7860 仅本机访问，挂载持久化目录）"
             mkdir -p /opt/video-parser/static/videos /opt/video-parser/static/images
-            docker run -d \
-              --name video-parser \
-              --restart unless-stopped \
-              -p 127.0.0.1:7860:7860 \
-              --env-file /opt/video-parser/.env \
-              -e APP_USER=admin \
-              -e APP_PASS \
-              -e REQUIRE_AUTH=1 \
-              -e SESSION_COOKIE_SECURE=1 \
-              -v /opt/video-parser/static/videos:/app/static/videos \
-              -v /opt/video-parser/static/images:/app/static/images \
-              -v /opt/video-parser/downloads:/app/downloads \
-              -v /opt/video-parser/cache:/app/cache \
-              -v /opt/video-parser/logs:/app/logs \
-              -v /opt/video-parser/data:/app/data \
-              video-parser:latest
+            start_container video-parser:candidate || rollback
 
             for attempt in 1 2 3 4 5; do
               if curl -fsS http://127.0.0.1:7860/health >/dev/null; then
@@ -94,7 +107,7 @@ jobs:
               fi
               if [ "$attempt" -eq 5 ]; then
                 echo "Health check failed"
-                exit 1
+                rollback
               fi
               sleep 5
             done
@@ -102,20 +115,21 @@ jobs:
             CODE_HOME=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7860/)
             if [ "$CODE_HOME" != "200" ]; then
               echo "Homepage not reachable (got $CODE_HOME)"
-              exit 1
+              rollback
             fi
             CODE_ACCT=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7860/account)
             if [ "$CODE_ACCT" != "302" ]; then
               echo "Account page not protected (got $CODE_ACCT)"
-              exit 1
+              rollback
             fi
-            CODE_API=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7860/api/auth/login \
-              -H 'Content-Type: application/json' -d '{"username":"admin","password":"wrongpass"}')
+            CODE_API=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7860/api/parse \
+              -H 'Content-Type: application/json' -d '{"text":""}')
             if [ "$CODE_API" != "401" ]; then
-              echo "Login API not protected (got $CODE_API)"
-              exit 1
+              echo "Business API not protected (got $CODE_API)"
+              rollback
             fi
-            curl -fsS "https://$DOMAIN_HOST/health" >/dev/null
+            curl -fsS "https://$DOMAIN_HOST/health" >/dev/null || rollback
+            docker tag video-parser:candidate video-parser:latest
             echo "==> DEPLOY DONE $(date)"
         env:
           APP_PASS: ${{ secrets.APP_PASS }}

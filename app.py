@@ -1609,6 +1609,7 @@ def create_app():
                 </div>
               </div>
               <div class="vp-help-notes" data-i18n="help_notes">生成的视频和报告将在约 48 小时后清理 · AI 分析前需先加载视频缓存</div>
+              <div class="vp-help-notes"><a href="/data-policy">使用与数据说明 / Data &amp; usage</a></div>
             </div>
             """
         )

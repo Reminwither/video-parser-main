@@ -396,6 +396,29 @@ async def change_password_submit(request: Request):
     return resp
 
 
+@app.post("/account/delete")
+async def delete_account_submit(request: Request):
+    user = _current_user(request)
+    if not user:
+        return RedirectResponse("/login?next=/account", status_code=302)
+    form = await request.form()
+    if str(form.get("confirm", "")) != "删除":
+        return HTMLResponse(auth_pages.account_page(user, error="请输入“删除”确认操作"))
+    try:
+        auth_db.delete_user_account(user["id"], str(form.get("password", "")))
+    except auth_db.AuthError as e:
+        return HTMLResponse(auth_pages.account_page(user, error=str(e)))
+    logger.info("用户账号已自行删除: id=%s", user["id"])
+    resp = RedirectResponse("/", status_code=303)
+    resp.delete_cookie(auth_db.SESSION_COOKIE, path="/")
+    return resp
+
+
+@app.get("/data-policy")
+async def data_policy_page():
+    return HTMLResponse(auth_pages.data_policy_page())
+
+
 @app.get("/api/auth/me")
 async def auth_me(request: Request):
     user = _current_user(request)

@@ -256,6 +256,20 @@ def change_password(user_id: int, old_password: str, new_password: str) -> None:
         _db().commit()
 
 
+def delete_user_account(user_id: int, password: str) -> None:
+    """Delete a normal account and its sessions after password confirmation."""
+    with _DB_LOCK:
+        c = _db()
+        user = c.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not user or not verify_password(password or "", user["password_hash"]):
+            raise AuthError("密码不正确")
+        if user["is_admin"]:
+            raise AuthError("管理员账号不能在此删除")
+        c.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        c.execute("DELETE FROM daily_quota WHERE subject = ?", (f"user:{user_id}",))
+        c.commit()
+
+
 # ==================== 限流 ====================
 
 def _throttle_get(c, key: str):

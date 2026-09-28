@@ -159,6 +159,7 @@ def register_page(next_url: str = "/", error: str = "") -> str:
     <button class="btn" type="submit">注 册</button>
     {err_html}
   </form>
+  <div class="foot">注册即表示你会遵守<a href="/data-policy">使用与数据说明</a>；请只处理有权使用的视频。</div>
   <div class="foot">已有账号？<a href="/login">直接登录</a></div>
 </div>
 """
@@ -169,6 +170,14 @@ def account_page(user: dict, sessions_active: int = 0, error: str = "", ok: str 
     err_html = f'<div class="msg err">{_html.escape(error)}</div>' if error else ""
     ok_html = f'<div class="msg ok">{_html.escape(ok)}</div>' if ok else ""
     admin_badge = ' <span class="badge" data-i18n="admin">管理员</span>' if user.get("is_admin") else ""
+    delete_form = "" if user.get("is_admin") else """
+  <form method="post" action="/account/delete" onsubmit="return confirm('确定永久删除此账号吗？')">
+    <label for="delete_password">删除账号</label>
+    <input id="delete_password" name="password" type="password" autocomplete="current-password" placeholder="输入当前密码" required>
+    <input name="confirm" type="text" placeholder="输入‘删除’确认" required>
+    <button class="btn" type="submit" style="background:#b91c1c">永久删除账号</button>
+  </form>
+"""
     body = f"""
 <div class="card">
   {_brand()}
@@ -187,7 +196,24 @@ def account_page(user: dict, sessions_active: int = 0, error: str = "", ok: str 
     <button class="btn" type="submit">修改密码</button>
     {err_html}{ok_html}
   </form>
-  <div class="foot"><a href="/" data-i18n="back">← 返回工作台</a> · <a href="/logout" data-i18n="logout">退出登录</a></div>
+  {delete_form}
+  <div class="foot"><a href="/" data-i18n="back">← 返回工作台</a> · <a href="/data-policy">使用与数据说明</a> · <a href="/logout" data-i18n="logout">退出登录</a></div>
 </div>
 """
     return _page("账户", body)
+
+
+def data_policy_page() -> str:
+    body = """
+<div class="card" style="max-width:680px;line-height:1.7">
+  <a class="brand" href="/"><span class="brand-logo">VA</span>VidAI</a>
+  <h1>使用与数据说明</h1>
+  <p class="sub">公开试用服务 · 更新于 2026 年 9 月 28 日</p>
+  <p>请仅提交你有权访问和使用的公开视频链接。来源平台可能限制解析或下载；可用性、画质和结果准确性无法保证。AI 报告仅供参考，请核对原视频。</p>
+  <p style="margin-top:14px">本服务保存账号名、加密后的密码、登录会话、访问 IP、浏览器信息和每日操作计数。为完成解析与分析，服务器会暂存视频、封面及报告；AI 分析所需内容会发送给已配置的模型服务商。</p>
+  <p style="margin-top:14px">生成文件在超过 48 小时后的每日清理时删除。会话通常有效 7 天；账号数据保留到你在<a href="/account">账户页</a>删除账号。删除后在线账号与会话立即清除，数据库备份最多保留最近 14 份，过期后轮替删除。</p>
+  <p style="margin-top:14px">不要提交私人、机密或无权处理的内容。请遵守来源平台的规则以及适用法律。使用本服务即表示你了解以上处理方式。</p>
+  <div class="foot"><a href="/">← 返回工作台</a></div>
+</div>
+"""
+    return _page("使用与数据说明", body)
