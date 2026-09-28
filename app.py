@@ -8,6 +8,7 @@ import os
 import html
 import base64
 import hashlib
+import logging
 import shutil
 import secrets
 import time
@@ -449,17 +450,31 @@ def parse_video(url: str, platform: str, request: gr.Request = None) -> tuple:
     user = _vp_session_from_request(request)
     if not user:
         return "🔒 请先登录后再使用此功能 / Please sign in first", _info_bar_html("请先登录 / Please sign in", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
+    started = time.monotonic()
+    metric_platform = detect_platform(url) if url else platform
     platform_issue = _platform_issue(url, platform)
     if platform_issue:
+        auth_db.record_usage("parse", metric_platform, "unsupported", "platform_mismatch" if "不一致" in platform_issue[1] else "")
         message, title, badge = platform_issue
         return message, _info_bar_html(title, badge, ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
     if not _PARSE_SLOTS.acquire(blocking=False):
+        auth_db.record_usage("parse", metric_platform, "busy")
         return "当前解析任务较多，请稍后重试", _info_bar_html("当前解析任务较多", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
     try:
         if not _allow_user_action(user, "parse", 30):
+            auth_db.record_usage("parse", metric_platform, "quota")
             return "今日解析次数已用完，请明天再试", _info_bar_html("今日解析次数已用完", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
         import asyncio
         status, info, cover, video_url, guide, video_info = asyncio.run(_async_parse_video(url, platform))
+        auth_db.record_usage(
+            "parse", video_info.get("platform", metric_platform) if video_info else metric_platform,
+            "success" if video_info else "failed", "" if video_info else "upstream",
+            int((time.monotonic() - started) * 1000),
+        )
+    except Exception:
+        logging.exception("Video parse failed")
+        auth_db.record_usage("parse", metric_platform, "failed", "error", int((time.monotonic() - started) * 1000))
+        return "解析服务暂时不可用，请稍后重试", _info_bar_html("解析服务暂时不可用", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
     finally:
         _PARSE_SLOTS.release()
     if cover:
@@ -833,7 +848,9 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
         return "🔒 请先登录后再使用此功能 / Please sign in first", "🔒 请先登录后再使用此功能 / Please sign in first", gr.update(value=None, visible=False)
     if not video_info:
         return REPORT_PLACEHOLDER, "请先解析视频", gr.update(value=None, visible=False)
+    metric_platform = video_info.get("platform", "其他")
     if not AI_ANALYSIS_ENABLED:
+        auth_db.record_usage("analysis", metric_platform, "unsupported", "disabled")
         return REPORT_PLACEHOLDER, "AI 分析暂未启用：模型服务账号尚未完成配置", gr.update(value=None, visible=False)
 
     video_id = video_info.get('video_id', 'video')
@@ -843,13 +860,17 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
     cache_path = os.path.join(client.cache_dir, f"{_video_cache_key(video_info)}_play.mp4")
 
     if not os.path.exists(cache_path):
+        auth_db.record_usage("analysis", metric_platform, "invalid", "missing_video")
         return REPORT_PLACEHOLDER, "请先点击「在线播放」加载视频后再提取内容", gr.update(value=None, visible=False)
 
     if not _ANALYSIS_SLOTS.acquire(blocking=False):
+        auth_db.record_usage("analysis", metric_platform, "busy")
         return REPORT_PLACEHOLDER, "当前有分析任务正在运行，请稍后重试", gr.update(value=None, visible=False)
 
+    started = time.monotonic()
     try:
         if not _allow_user_action(user, "analysis", 2):
+            auth_db.record_usage("analysis", metric_platform, "quota")
             return REPORT_PLACEHOLDER, "今日 AI 分析次数已用完，请明天再试", gr.update(value=None, visible=False)
         qwen_client = OpenAI(
             base_url=QWEN_API_BASE_URL,
@@ -882,11 +903,13 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
         report_path = os.path.join(reports_dir, f"{safe_id}_{int(time.time())}_{secrets.token_hex(6)}.md")
         with open(report_path, "w", encoding="utf-8", newline="\n") as report_file:
             report_file.write(result)
+        auth_db.record_usage("analysis", metric_platform, "success", duration_ms=int((time.monotonic() - started) * 1000))
         return result, status, gr.update(value=report_path, visible=True)
 
     except Exception as e:
         import traceback
         traceback.print_exc()
+        auth_db.record_usage("analysis", metric_platform, "failed", "error", int((time.monotonic() - started) * 1000))
         return "", f"提取失败: {str(e)}", gr.update(value=None, visible=False)
     finally:
         _ANALYSIS_SLOTS.release()

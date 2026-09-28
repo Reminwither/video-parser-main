@@ -17,6 +17,7 @@ import sqlite3
 import secrets
 import hashlib
 import hmac
+import logging
 import threading
 import time
 from datetime import datetime, timezone
@@ -44,6 +45,7 @@ USERNAME_RE = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")
 # 登录后的业务线程直接抛错）
 _DB_LOCK = threading.Lock()
 _DB_LOCAL = threading.local()
+_LOG = logging.getLogger(__name__)
 
 
 def _now_iso() -> str:
@@ -137,6 +139,16 @@ def init_db() -> None:
                 count INTEGER NOT NULL,
                 PRIMARY KEY (day, subject, action)
             );
+            CREATE TABLE IF NOT EXISTS usage_metrics (
+                day TEXT NOT NULL,
+                action TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                outcome TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 0,
+                duration_ms_total INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (day, action, platform, outcome, reason)
+            );
             """
         )
         c.commit()
@@ -204,6 +216,32 @@ def create_user(username: str, password: str, is_admin: bool = False) -> int:
 
 def consume_daily_quota(subject: str, action: str, limit: int) -> bool:
     return consume_daily_quotas([(subject, action, limit)])
+
+
+def record_usage(action: str, platform: str, outcome: str, reason: str = "", duration_ms: int = 0) -> None:
+    """Store bounded aggregate metrics without URLs, video content, IPs or user IDs."""
+    allowed_actions = {"parse", "analysis"}
+    allowed_platforms = {"抖音", "哔哩哔哩", "小红书", "视频号"}
+    allowed_outcomes = {"success", "failed", "unsupported", "busy", "quota", "invalid"}
+    allowed_reasons = {"", "upstream", "error", "missing_video", "disabled", "platform_mismatch"}
+    if action not in allowed_actions or outcome not in allowed_outcomes:
+        return
+    platform = platform if platform in allowed_platforms else "其他"
+    reason = reason if reason in allowed_reasons else "error"
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        with _DB_LOCK:
+            c = _db()
+            c.execute(
+                "INSERT INTO usage_metrics(day, action, platform, outcome, reason, count, duration_ms_total) "
+                "VALUES (?, ?, ?, ?, ?, 1, ?) "
+                "ON CONFLICT(day, action, platform, outcome, reason) DO UPDATE SET "
+                "count = count + 1, duration_ms_total = duration_ms_total + excluded.duration_ms_total",
+                (day, action, platform, outcome, reason, max(0, min(int(duration_ms), 3_600_000))),
+            )
+            c.commit()
+    except sqlite3.Error:
+        _LOG.exception("Unable to record usage metric")
 
 
 def consume_daily_quotas(items: list[tuple[str, str, int]]) -> bool:

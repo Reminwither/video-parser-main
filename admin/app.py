@@ -217,6 +217,66 @@ def get_stats():
     return stats
 
 
+def get_usage_stats():
+    """Seven-day aggregate usage from the main app; no link or user data is stored."""
+    data = {"ready": False, "parse": {}, "analysis": {}, "platforms": [], "days": [], "reasons": [], "success_rate": None}
+    try:
+        c = ro_conn()
+        rows = c.execute(
+            "SELECT day, action, platform, outcome, reason, SUM(count), SUM(duration_ms_total) "
+            "FROM usage_metrics WHERE day >= date('now', '-6 days') "
+            "GROUP BY day, action, platform, outcome, reason ORDER BY day",
+        ).fetchall()
+        c.close()
+    except sqlite3.Error:
+        return data
+
+    data["ready"] = True
+    platforms = {name: {"name": name, "total": 0, "success": 0, "failed": 0} for name in
+                 ("抖音", "哔哩哔哩", "小红书", "视频号", "其他")}
+    days = {}
+    reasons = {}
+    for day, action, platform, outcome, reason, count, duration_total in rows:
+        if action not in ("parse", "analysis"):
+            continue
+        metric = data[action]
+        metric[outcome] = metric.get(outcome, 0) + count
+        metric["total"] = metric.get("total", 0) + count
+        if outcome == "success":
+            metric["success_duration_ms"] = metric.get("success_duration_ms", 0) + duration_total
+        if reason:
+            reasons[(action, reason)] = reasons.get((action, reason), 0) + count
+        daily = days.setdefault(day, {"day": day, "parse": 0, "parse_success": 0, "analysis": 0, "analysis_success": 0})
+        daily[action] += count
+        if outcome == "success":
+            daily[action + "_success"] += count
+        if action == "parse":
+            p = platforms.get(platform, platforms["其他"])
+            p["total"] += count
+            if outcome in ("success", "failed"):
+                p[outcome] += count
+
+    completed = data["parse"].get("success", 0) + data["parse"].get("failed", 0)
+    if completed:
+        data["success_rate"] = round(100 * data["parse"].get("success", 0) / completed, 1)
+    for action in ("parse", "analysis"):
+        m = data[action]
+        n = m.get("success", 0)
+        m["avg_success_seconds"] = round(m.get("success_duration_ms", 0) / n / 1000, 1) if n else None
+    data["platforms"] = [p for p in platforms.values() if p["total"]]
+    data["days"] = [days[day] for day in sorted(days, reverse=True)]
+    reason_labels = {
+        "upstream": "来源平台解析失败", "error": "服务执行异常",
+        "missing_video": "未加载视频缓存", "disabled": "AI 功能未启用",
+        "platform_mismatch": "平台选择与链接不一致",
+    }
+    data["reasons"] = [
+        {"action": "解析" if action == "parse" else "AI 分析", "reason": reason_labels.get(reason, reason), "count": count}
+        for (action, reason), count in sorted(reasons.items(), key=lambda item: item[1], reverse=True)
+    ]
+    return data
+
+
 def get_users():
     now = int(time.time())
     try:
@@ -330,7 +390,7 @@ def logout():
 @app.route("/")
 @require_admin
 def dashboard():
-    return render_template("dashboard.html", s=get_stats(),
+    return render_template("dashboard.html", s=get_stats(), m=get_usage_stats(),
                            user=flask_session.get("admin_user"))
 
 
