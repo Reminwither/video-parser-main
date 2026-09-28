@@ -9,6 +9,9 @@ import time
 import hashlib
 import secrets
 import shutil
+import re
+import mimetypes
+from pathlib import Path
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -16,7 +19,7 @@ from requests.exceptions import RequestException, ConnectionError
 from fastapi import FastAPI, Request, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from configs.logging_config import logger
@@ -428,6 +431,98 @@ async def account_page_view(request: Request):
             (user["id"], auth_db._now()),
         ).fetchone()["n"]
     return HTMLResponse(auth_pages.account_page(fresh, sessions_active=n))
+
+
+_ACCOUNT_FILE_RE = re.compile(r"^vp-u([1-9][0-9]*)-([\w]{1,30})_(\d+)_([0-9a-f]{12})(?:_asr\.(?:txt|srt)|\.md)$")
+
+
+def _account_report_files(user_id: int) -> list[dict]:
+    root = (Path(__file__).resolve().parent / "downloads" / "reports").resolve()
+    if not root.is_dir():
+        return []
+    files = []
+    for path in root.glob(f"vp-u{int(user_id)}-*"):
+        match = _ACCOUNT_FILE_RE.fullmatch(path.name)
+        if not match or int(match.group(1)) != int(user_id) or not path.is_file():
+            continue
+        try:
+            stat = path.stat()
+            if not path.resolve().is_relative_to(root):
+                continue
+        except OSError:
+            continue
+        kind = "分析报告" if path.suffix == ".md" else ("ASR 整理稿" if path.name.endswith("_asr.txt") else "ASR 字幕文件")
+        files.append({
+            "name": path.name,
+            "label": f"{kind} · {match.group(2)}",
+            "size": f"{max(1, stat.st_size // 1024)} KB",
+            "modified": time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)),
+            "mtime": stat.st_mtime,
+        })
+    return sorted(files, key=lambda item: item["mtime"], reverse=True)[:100]
+
+
+@app.get("/account/files")
+async def account_files_page_view(request: Request):
+    user = _current_user(request)
+    if not user:
+        return RedirectResponse("/login?next=/account/files", status_code=302)
+    token = request.cookies.get(auth_db.SESSION_COOKIE, "")
+    response = HTMLResponse(auth_pages.account_files_page(user, _account_report_files(user["id"]), token))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.get("/account/files/{name}")
+async def account_file_download(name: str, request: Request):
+    user = _current_user(request)
+    match = _ACCOUNT_FILE_RE.fullmatch(name or "")
+    if not user:
+        return RedirectResponse("/login?next=/account/files", status_code=302)
+    if not match or int(match.group(1)) != int(user["id"]):
+        return JSONResponse(status_code=404, content={"detail": "File not found"})
+    root = (Path(__file__).resolve().parent / "downloads" / "reports").resolve()
+    path = (root / name).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        return JSONResponse(status_code=404, content={"detail": "File not found"})
+    media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    response = FileResponse(path, media_type=media_type, filename=path.name)
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@app.post("/account/files/delete")
+async def account_file_delete(request: Request):
+    user = _current_user(request)
+    if not user:
+        return RedirectResponse("/login?next=/account/files", status_code=302)
+    form = await request.form()
+    cookie_token = request.cookies.get(auth_db.SESSION_COOKIE, "")
+    form_token = str(form.get("csrf_token", ""))
+    if not cookie_token or not secrets.compare_digest(cookie_token, form_token):
+        return HTMLResponse(auth_pages.account_files_page(
+            user, _account_report_files(user["id"]), cookie_token, error="页面已过期，请刷新后重试"
+        ), status_code=403)
+    name = str(form.get("name", ""))
+    match = _ACCOUNT_FILE_RE.fullmatch(name)
+    if not match or int(match.group(1)) != int(user["id"]):
+        return HTMLResponse(auth_pages.account_files_page(
+            user, _account_report_files(user["id"]), cookie_token, error="找不到该文件"
+        ), status_code=404)
+    root = (Path(__file__).resolve().parent / "downloads" / "reports").resolve()
+    path = (root / name).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        return HTMLResponse(auth_pages.account_files_page(
+            user, _account_report_files(user["id"]), cookie_token, error="找不到该文件"
+        ), status_code=404)
+    try:
+        path.unlink()
+    except OSError:
+        return HTMLResponse(auth_pages.account_files_page(
+            user, _account_report_files(user["id"]), cookie_token, error="删除失败，请稍后重试"
+        ), status_code=500)
+    return RedirectResponse("/account/files", status_code=303)
 
 
 @app.post("/account/password")

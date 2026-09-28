@@ -188,6 +188,7 @@ def account_page(user: dict, sessions_active: int = 0, error: str = "", ok: str 
     <div><span>最近登录</span><span>{_html.escape(str(user.get("last_login_at") or "-"))}</span></div>
     <div><span>活跃会话</span><span>{sessions_active} 个</span></div>
   </div>
+  <div class="foot"><a href="/account/files">最近的分析报告与转写文件 →</a></div>
   <form method="post" action="/account/password">
     <label for="old_password">当前密码</label>
     <input id="old_password" name="old_password" type="password" autocomplete="current-password" required>
@@ -201,6 +202,41 @@ def account_page(user: dict, sessions_active: int = 0, error: str = "", ok: str 
 </div>
 """
     return _page("账户", body)
+
+
+def account_files_page(user: dict, files: list[dict], csrf_token: str, error: str = "", ok: str = "") -> str:
+    err_html = f'<div class="msg err">{_html.escape(error)}</div>' if error else ""
+    ok_html = f'<div class="msg ok">{_html.escape(ok)}</div>' if ok else ""
+    if files:
+        rows = []
+        for item in files:
+            name = _html.escape(item["name"], quote=True)
+            label = _html.escape(item["label"])
+            size = _html.escape(item["size"])
+            age = _html.escape(item["modified"])
+            rows.append(f"""
+  <div class="info-rows" style="margin:12px 0;padding:12px;border:1px solid #263247;border-radius:12px">
+    <div><span>{label}</span><span>{size} · {age}</span></div>
+    <div><a href="/account/files/{name}">下载文件</a>
+      <form method="post" action="/account/files/delete" style="display:inline;margin-left:12px" onsubmit="return confirm('确定删除这个文件吗？')">
+        <input type="hidden" name="csrf_token" value="{_html.escape(csrf_token, quote=True)}">
+        <input type="hidden" name="name" value="{name}">
+        <button type="submit" style="background:none;border:0;color:#f87171;cursor:pointer">删除</button>
+      </form></div>
+  </div>""")
+        file_rows = "".join(rows)
+    else:
+        file_rows = '<p class="sub">这里还没有报告或转写文件。生成后会在此显示，文件超过 48 小时会自动清理。</p>'
+    body = f"""
+<div class="card" style="max-width:760px">
+  {_brand()}
+  <h1>我的分析文件</h1>
+  <p class="sub">仅显示当前账号生成的文件，最多展示最近 100 个。文件在超过 48 小时后的每日清理时删除。</p>
+  {err_html}{ok_html}{file_rows}
+  <div class="foot"><a href="/account">← 账户设置</a> · <a href="/">返回工作台</a></div>
+</div>
+"""
+    return _page("我的分析文件", body)
 
 
 def data_policy_page() -> str:
