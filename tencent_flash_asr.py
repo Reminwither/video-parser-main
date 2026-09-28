@@ -7,10 +7,12 @@ import hashlib
 import hmac
 import os
 import time
+import wave
 from pathlib import Path
 from urllib.parse import urlencode
 
 import requests
+from auth_db import record_resource_usage
 
 
 def transcribe(audio_path: str, speaker_diarization: bool = False) -> list[dict]:
@@ -23,6 +25,8 @@ def transcribe(audio_path: str, speaker_diarization: bool = False) -> list[dict]
     path = Path(audio_path)
     if path.stat().st_size > 100 * 1024 * 1024:
         raise RuntimeError("提取后的音频超过腾讯云极速转写的 100 MB 上限")
+    with wave.open(str(path), "rb") as audio:
+        submitted_audio_ms = round(audio.getnframes() * 1000 / audio.getframerate())
 
     params = {
         "engine_type": os.getenv("TENCENT_ASR_ENGINE", "16k_zh").strip() or "16k_zh",
@@ -46,19 +50,28 @@ def transcribe(audio_path: str, speaker_diarization: bool = False) -> list[dict]
         hmac.new(secret_key.encode("utf-8"), signing_text, hashlib.sha1).digest()
     ).decode("ascii")
     timeout = max(1, int(os.getenv("ASR_REQUEST_TIMEOUT_SECONDS", "120")))
-    with path.open("rb") as audio_file:
-        response = requests.post(
-            f"https://{endpoint}?{query}",
-            data=audio_file,
-            headers={"Authorization": signature, "Content-Type": "application/octet-stream"},
-            timeout=(10, timeout),
-        )
-    response.raise_for_status()
-    payload = response.json()
+    try:
+        with path.open("rb") as audio_file:
+            response = requests.post(
+                f"https://{endpoint}?{query}",
+                data=audio_file,
+                headers={"Authorization": signature, "Content-Type": "application/octet-stream"},
+                timeout=(10, timeout),
+            )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:
+        record_resource_usage("tencent-asr", "flash-transcribe", params["engine_type"],
+                              failed=True, submitted_audio_ms=submitted_audio_ms)
+        raise
     if payload.get("code") != 0:
+        record_resource_usage("tencent-asr", "flash-transcribe", params["engine_type"],
+                              failed=True, submitted_audio_ms=submitted_audio_ms)
         raise RuntimeError(
             f"腾讯云极速转写失败：{payload.get('code')} {payload.get('message') or '未知错误'}"
         )
+    record_resource_usage("tencent-asr", "flash-transcribe", params["engine_type"],
+                          submitted_audio_ms=submitted_audio_ms)
     channels = payload.get("flash_result") or []
     if not channels:
         return []
@@ -86,7 +99,8 @@ def transcribe(audio_path: str, speaker_diarization: bool = False) -> list[dict]
     return []
 
 
-def transcribe_with_speakers(audio_path: str, public_url: str | None = None) -> list[dict]:
+def transcribe_with_speakers(audio_path: str, public_url: str | None = None,
+                             duration_seconds: float = 0.0) -> list[dict]:
     """腾讯云 ASR v3 CreateRecTask：极速版引擎 + 说话人分离。
 
     走官方 asr.tencentcloudapi.com，仅需 SecretId/SecretKey（无需 AppID）。
@@ -134,7 +148,14 @@ def transcribe_with_speakers(audio_path: str, public_url: str | None = None) -> 
         with path.open("rb") as audio_file:
             req.Data = base64.b64encode(audio_file.read()).decode("ascii")
 
-    resp = client.CreateRecTask(req)
+    try:
+        resp = client.CreateRecTask(req)
+    except Exception:
+        record_resource_usage("tencent-asr", "speaker-diarization", engine, failed=True,
+                              submitted_audio_ms=round(max(0.0, duration_seconds) * 1000))
+        raise
+    record_resource_usage("tencent-asr", "speaker-diarization", engine,
+                          submitted_audio_ms=round(max(0.0, duration_seconds) * 1000))
     task_id = resp.Data.TaskId
 
     deadline = time.time() + int(os.getenv("TENCENT_ASR_POLL_SECONDS", "300"))

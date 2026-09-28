@@ -28,12 +28,35 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterable, Optional, Sequence
 
 from viral_distillation import compact_signal_context, normalize_platform_evidence
+from auth_db import record_resource_usage
 
 if TYPE_CHECKING:
     from openai import OpenAI
 
 
 ProgressCallback = Optional[Callable[[float, str], None]]
+
+
+def _model_completion(client, operation: str, **kwargs):
+    """Record provider-reported token usage for every uncached model request."""
+    model = str(kwargs.get("model") or "")
+    try:
+        response = client.chat.completions.create(**kwargs)
+    except Exception:
+        record_resource_usage("model-api", operation, model, failed=True)
+        raise
+    usage = getattr(response, "usage", None)
+    if isinstance(usage, dict):
+        input_tokens = usage.get("prompt_tokens")
+        output_tokens = usage.get("completion_tokens")
+    else:
+        input_tokens = getattr(usage, "prompt_tokens", None)
+        output_tokens = getattr(usage, "completion_tokens", None)
+    record_resource_usage(
+        "model-api", operation, model,
+        input_tokens=input_tokens, output_tokens=output_tokens,
+    )
+    return response
 
 
 @dataclass
@@ -262,6 +285,7 @@ def _extract_16k_mp3(media_path: str, out_path: str) -> None:
 def _diarize_tencent(
     media_path: str,
     cues: Sequence[TimedText],
+    duration_seconds: float = 0.0,
 ) -> tuple[list[TimedText], Optional[str]]:
     """腾讯云 ASR（录音文件识别极速版）说话人分离后端：走云端 API，无需本地 GPU，免 AppID。"""
     secret_id = os.getenv("TENCENT_ASR_SECRET_ID", "").strip()
@@ -290,7 +314,9 @@ def _diarize_tencent(
         mp3_path = os.path.join(runtime_dir, mp3_name)
         _extract_16k_mp3(media_path, mp3_path)
         public_url = base.rstrip("/") + "/static/diar/" + mp3_name
-        sentences = transcribe_with_speakers(mp3_path, public_url=public_url)
+        sentences = transcribe_with_speakers(
+            mp3_path, public_url=public_url, duration_seconds=duration_seconds
+        )
         intervals = sorted(
             (
                 s["start"], s["end"], f"SPEAKER_{int(s['speaker_id'])}"
@@ -319,6 +345,7 @@ def _diarize_tencent(
 def assign_speakers(
     media_path: str,
     cues: Sequence[TimedText],
+    duration_seconds: float = 0.0,
 ) -> tuple[list[TimedText], Optional[str]]:
     """给转写片段打上说话人标签（多人转写）。
 
@@ -337,7 +364,7 @@ def assign_speakers(
     if backend == "pyannote":
         return _diarize_pyannote(media_path, cues)
     if backend == "tencent":
-        return _diarize_tencent(media_path, cues)
+        return _diarize_tencent(media_path, cues, duration_seconds)
 
     return list(cues), f"未知的说话人分离后端: {backend}"
 
@@ -1123,7 +1150,7 @@ def observe_visual_timeline(
             last_error = None
             for attempt in range(_env_int("VISION_BATCH_RETRIES", 2)):
                 try:
-                    response = client.chat.completions.create(
+                    response = _model_completion(client, "vision",
                         model=model,
                         messages=[{"role": "user", "content": prompt}],
                         stream=False,
@@ -1302,7 +1329,7 @@ def check_title_alignment(client: OpenAI, model: str, title: str, analysis: str)
 
 现在只返回上述三个键的 JSON 对象。
 """
-    response = client.chat.completions.create(
+    response = _model_completion(client, "title-check",
         model=model,
         messages=[{"role": "user", "content": prompt}],
         stream=False,
@@ -1374,7 +1401,7 @@ def revise_analysis_with_evidence(
 [待修订候选报告]
 {candidate}
 """
-    response = client.chat.completions.create(
+    response = _model_completion(client, "quality-rewrite",
         model=model,
         messages=[{"role": "user", "content": prompt}],
         stream=False,
@@ -1463,7 +1490,7 @@ def generate_structured_analysis(
     text_change_count: int,
     custom_focus: Optional[str],
 ) -> dict:
-    response = client.chat.completions.create(
+    response = _model_completion(client, "synthesis",
         model=model,
         messages=[{
             "role": "user",
@@ -1852,7 +1879,7 @@ def _summarize_evidence_window(client: OpenAI, model: str, window: dict) -> dict
         except (ValueError, TypeError, json.JSONDecodeError):
             pass
     try:
-        response = client.chat.completions.create(
+        response = _model_completion(client, "segment-summary",
             model=model,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
@@ -1897,7 +1924,7 @@ def _summarize_visual_evidence_windows(
     cached = _load_model_text_cache("visual_segment_summary_v1", model, prompt)
     if cached is None:
         try:
-            response = client.chat.completions.create(
+            response = _model_completion(client, "visual-segment-summary",
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
@@ -2066,7 +2093,7 @@ def generate_audience_report_payload(
     try:
         raw_overview = _load_model_text_cache("audience_report_v3", model, prompt)
         if raw_overview is None:
-            response = client.chat.completions.create(
+            response = _model_completion(client, "audience-report",
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
@@ -2096,7 +2123,7 @@ mechanics 必须非空；viral_hypotheses 必须有1-3条且含 hypothesis/evide
 """
             repair_raw = _load_model_text_cache("audience_report_v3_repair", model, repair_prompt)
             if repair_raw is None:
-                repair_response = client.chat.completions.create(
+                repair_response = _model_completion(client, "audience-repair",
                     model=model,
                     messages=[{"role": "user", "content": repair_prompt}],
                     response_format={"type": "json_object"},
@@ -2461,7 +2488,7 @@ def clean_asr_transcript(
         cleaned = _load_model_text_cache("asr_clean_batches", model, prompt)
         if cleaned is None:
             try:
-                response = client.chat.completions.create(
+                response = _model_completion(client, "asr-clean",
                     model=model,
                     messages=[{"role": "user", "content": prompt}],
                     stream=False,
@@ -2619,7 +2646,7 @@ def analyze_video_evidence_first(
         diarize_on = diarize or _asr_diarize_enabled()
         if diarize_on and transcript:
             update(0.30, "多人转写：正在标注说话人")
-            diarized, diarize_warning = assign_speakers(video_path, transcript)
+            diarized, diarize_warning = assign_speakers(video_path, transcript, media.duration)
             bundle.transcript = diarized
             if diarize_warning:
                 warnings.append(diarize_warning)

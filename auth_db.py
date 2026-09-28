@@ -149,6 +149,19 @@ def init_db() -> None:
                 duration_ms_total INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (day, action, platform, outcome, reason)
             );
+            CREATE TABLE IF NOT EXISTS resource_usage (
+                day TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                model TEXT NOT NULL,
+                calls INTEGER NOT NULL DEFAULT 0,
+                failed_calls INTEGER NOT NULL DEFAULT 0,
+                missing_token_usage_calls INTEGER NOT NULL DEFAULT 0,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                submitted_audio_ms INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (day, provider, operation, model)
+            );
             """
         )
         c.commit()
@@ -242,6 +255,44 @@ def record_usage(action: str, platform: str, outcome: str, reason: str = "", dur
             c.commit()
     except sqlite3.Error:
         _LOG.exception("Unable to record usage metric")
+
+
+def record_resource_usage(
+    provider: str, operation: str, model: str, *, failed: bool = False,
+    input_tokens: int | None = None, output_tokens: int | None = None,
+    submitted_audio_ms: int = 0,
+) -> None:
+    """Count provider calls and reported units, without prompts or account data."""
+    if provider not in {"model-api", "tencent-asr"} or not model or len(model) > 120:
+        return
+    if operation not in {
+        "vision", "title-check", "quality-rewrite", "synthesis", "segment-summary",
+        "visual-segment-summary", "audience-report", "audience-repair", "asr-clean",
+        "flash-transcribe", "speaker-diarization",
+    }:
+        return
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    missing = provider == "model-api" and not failed and (input_tokens is None or output_tokens is None)
+    try:
+        with _DB_LOCK:
+            c = _db()
+            c.execute(
+                "INSERT INTO resource_usage(day, provider, operation, model, calls, failed_calls, "
+                "missing_token_usage_calls, input_tokens, output_tokens, submitted_audio_ms) "
+                "VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(day, provider, operation, model) DO UPDATE SET "
+                "calls = calls + 1, failed_calls = failed_calls + excluded.failed_calls, "
+                "missing_token_usage_calls = missing_token_usage_calls + excluded.missing_token_usage_calls, "
+                "input_tokens = input_tokens + excluded.input_tokens, "
+                "output_tokens = output_tokens + excluded.output_tokens, "
+                "submitted_audio_ms = submitted_audio_ms + excluded.submitted_audio_ms",
+                (day, provider, operation, model, int(failed), int(missing),
+                 max(0, int(input_tokens or 0)), max(0, int(output_tokens or 0)),
+                 max(0, int(submitted_audio_ms))),
+            )
+            c.commit()
+    except (sqlite3.Error, TypeError, ValueError):
+        _LOG.exception("Unable to record resource usage")
 
 
 def consume_daily_quotas(items: list[tuple[str, str, int]]) -> bool:

@@ -300,6 +300,43 @@ def get_usage_stats():
     return data
 
 
+def get_resource_stats():
+    """Seven-day provider units; these are measurements, not invoice amounts."""
+    data = {"ready": False, "model_calls": 0, "model_failed": 0,
+            "unreported": 0, "input_tokens": 0, "output_tokens": 0,
+            "asr_calls": 0, "asr_failed": 0, "audio_minutes": 0.0, "rows": []}
+    try:
+        c = ro_conn()
+        rows = c.execute(
+            "SELECT provider, operation, model, SUM(calls), SUM(failed_calls), "
+            "SUM(missing_token_usage_calls), SUM(input_tokens), SUM(output_tokens), "
+            "SUM(submitted_audio_ms) FROM resource_usage "
+            "WHERE day >= date('now', '-6 days') GROUP BY provider, operation, model "
+            "ORDER BY SUM(calls) DESC, provider, operation"
+        ).fetchall()
+        c.close()
+    except sqlite3.Error:
+        return data
+    data["ready"] = True
+    for provider, operation, model, calls, failed, unreported, input_tokens, output_tokens, audio_ms in rows:
+        if provider == "model-api":
+            data["model_calls"] += calls
+            data["model_failed"] += failed
+            data["unreported"] += unreported
+            data["input_tokens"] += input_tokens
+            data["output_tokens"] += output_tokens
+        elif provider == "tencent-asr":
+            data["asr_calls"] += calls
+            data["asr_failed"] += failed
+            data["audio_minutes"] += audio_ms / 60000
+        data["rows"].append({"provider": provider, "operation": operation,
+                             "model": model, "calls": calls, "failed": failed,
+                             "input_tokens": input_tokens, "output_tokens": output_tokens,
+                             "audio_minutes": round(audio_ms / 60000, 2)})
+    data["audio_minutes"] = round(data["audio_minutes"], 2)
+    return data
+
+
 def get_users():
     now = int(time.time())
     try:
@@ -442,7 +479,7 @@ def logout():
 @app.route("/")
 @require_admin
 def dashboard():
-    return render_template("dashboard.html", s=get_stats(), m=get_usage_stats(),
+    return render_template("dashboard.html", s=get_stats(), m=get_usage_stats(), r=get_resource_stats(),
                            user=flask_session.get("admin_user"))
 
 

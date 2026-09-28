@@ -75,6 +75,33 @@
   </div>
 </div>
 
+<div class="row row-cards mt-2">
+  <div class="col-12"><div class="card">
+    <div class="card-header"><h3 class="card-title">模型与语音服务用量 · 近 7 天</h3></div>
+    <div class="card-body">
+      {% if r.ready %}
+      <div class="row gy-2">
+        <div class="col-sm-6 col-lg-3"><strong>{{ r.model_calls }}</strong> 次模型请求 <span class="text-muted">（失败 {{ r.model_failed }}）</span></div>
+        <div class="col-sm-6 col-lg-3"><strong>{{ r.input_tokens }}</strong> 输入 token / <strong>{{ r.output_tokens }}</strong> 输出 token</div>
+        <div class="col-sm-6 col-lg-3"><strong>{{ r.asr_calls }}</strong> 次腾讯云语音请求 <span class="text-muted">（失败 {{ r.asr_failed }}）</span></div>
+        <div class="col-sm-6 col-lg-3"><strong>{{ r.audio_minutes }}</strong> 分钟提交音频</div>
+      </div>
+      <div class="text-muted mt-2">{{ r.unreported }} 次成功模型请求未返回 token 用量。音频为提交时长；上述数字不是服务商账单或金额。</div>
+      {% else %}
+      <div class="text-muted">新版本收到任务后开始记录服务用量。</div>
+      {% endif %}
+    </div>
+    {% if r.rows %}<div class="table-responsive"><table class="table table-sm card-table">
+      <thead><tr><th>服务</th><th>环节</th><th>模型或引擎</th><th>请求</th><th>失败</th><th>输入 token</th><th>输出 token</th><th>提交音频（分钟）</th></tr></thead>
+      <tbody>{% for item in r.rows %}<tr>
+        <td>{{ item.provider }}</td><td>{{ item.operation }}</td><td>{{ item.model }}</td>
+        <td>{{ item.calls }}</td><td>{{ item.failed }}</td><td>{{ item.input_tokens }}</td>
+        <td>{{ item.output_tokens }}</td><td>{{ item.audio_minutes }}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>{% endif %}
+  </div></div>
+</div>
+
 <div class="row row-deck row-cards mt-2">
   <div class="col-sm-6 col-lg-3">
     <div class="card card-sm"><div class="card-body">
