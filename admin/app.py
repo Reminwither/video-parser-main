@@ -22,6 +22,8 @@ import hmac
 import time
 import secrets
 import mimetypes
+import json
+import re
 import threading
 from pathlib import Path
 from datetime import datetime, timezone
@@ -30,18 +32,20 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from flask import (
     Flask, request, redirect, url_for,
-    render_template, send_file, abort, session as flask_session,
+    render_template, send_file, abort, session as flask_session, Response,
 )
 
 # ===================== 配置 =====================
 AUTH_DB_PATH = os.getenv("AUTH_DB_PATH", "/opt/video-parser/data/auth.db")
 ASSETS_DIR = os.getenv("ASSETS_DIR", "/opt/video-parser/downloads")
 LOGS_DIR = os.getenv("LOGS_DIR", "/opt/video-parser/logs")
+ASR_CACHE_DIR = os.getenv("ASR_CACHE_DIR", "/opt/video-parser/cache/asr")
 PORT = int(os.getenv("PORT", "7861"))
 PBKDF2_ITERATIONS = 240_000
 VIDEO_EXT = {".mp4", ".webm", ".mkv", ".mov", ".flv", ".m4v", ".ts"}
 DOC_EXT = {".md", ".txt", ".json", ".srt", ".vtt", ".pdf", ".html"}
 ASSET_CAP = 500                               # 资产列表单次扫描上限，防止目录过大卡死
+ASR_CACHE_NAME = re.compile(r"^[0-9a-f]{64}\.json$")
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 app = Flask(
@@ -337,6 +341,35 @@ def scan_assets(query="", ext=None, limit=ASSET_CAP):
     return out
 
 
+def scan_asr_cache(limit=100):
+    """Expose previous ASR results to admins without modifying the analysis cache."""
+    root = Path(ASR_CACHE_DIR)
+    if not root.is_dir():
+        return []
+    try:
+        files = (p for p in root.iterdir() if p.is_file() and ASR_CACHE_NAME.fullmatch(p.name))
+        recent = sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)[:limit]
+    except OSError:
+        return []
+    out = []
+    for path in recent:
+        try:
+            if path.stat().st_size > 1024 * 1024:
+                continue
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                continue
+            out.append({
+                "name": path.name, "short_name": path.stem[:12],
+                "status": str(data.get("status") or "未知"),
+                "segments": len(data.get("cues") or []),
+                "mtime": _iso(path.stat().st_mtime),
+            })
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            continue
+    return out
+
+
 # ===================== 鉴权装饰 =====================
 def require_admin(f):
     from functools import wraps
@@ -409,9 +442,38 @@ def assets():
     data = scan_assets(q, ext or None)
     truncated = any(d.get("_truncated") for d in data)
     data = [d for d in data if not d.get("_truncated")]
-    return render_template("assets.html", assets=data, query=q,
+    return render_template("assets.html", assets=data, asr_caches=scan_asr_cache(), query=q,
                            ext=ext, truncated=truncated,
                            user=flask_session.get("admin_user"))
+
+
+@app.route("/asr-cache/<name>")
+@require_admin
+def asr_cache_file(name):
+    if not ASR_CACHE_NAME.fullmatch(name):
+        abort(404)
+    root = Path(ASR_CACHE_DIR).resolve()
+    path = (root / name).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        abort(404)
+    if path.stat().st_size > 1024 * 1024:
+        abort(413)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        abort(404)
+    if not isinstance(data, dict):
+        abort(404)
+    lines = ["ASR 机器转写（未人工校对）", f"状态：{data.get('status') or '未知'}", ""]
+    for cue in data.get("cues") or []:
+        if not isinstance(cue, dict):
+            continue
+        try:
+            start, end = float(cue.get("start") or 0), float(cue.get("end") or 0)
+        except (TypeError, ValueError):
+            continue
+        lines.append(f"[{start:.2f}–{end:.2f}] {str(cue.get('text') or '').strip()}")
+    return Response("\n".join(lines) + "\n", content_type="text/plain; charset=utf-8")
 
 
 @app.route("/asset/<path:p>")

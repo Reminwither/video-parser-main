@@ -10,11 +10,13 @@
         <input type="text" name="q" class="form-control" placeholder="按文件名检索…" value="{{ query }}">
         <select name="ext" class="form-select" style="width:auto">
           <option value="">全部类型</option>
-          <option value=".mp4">视频 .mp4</option>
-          <option value=".webm">视频 .webm</option>
-          <option value=".json">.json</option>
-          <option value=".md">.md</option>
-          <option value=".srt">.srt/.vtt</option>
+          <option value=".mp4" {% if ext == '.mp4' %}selected{% endif %}>视频 .mp4</option>
+          <option value=".webm" {% if ext == '.webm' %}selected{% endif %}>视频 .webm</option>
+          <option value=".json" {% if ext == '.json' %}selected{% endif %}>.json</option>
+          <option value=".md" {% if ext == '.md' %}selected{% endif %}>报告 .md</option>
+          <option value=".txt" {% if ext == '.txt' %}selected{% endif %}>ASR 整理稿 .txt</option>
+          <option value=".srt" {% if ext == '.srt' %}selected{% endif %}>ASR 时间轴 .srt</option>
+          <option value=".vtt" {% if ext == '.vtt' %}selected{% endif %}>字幕 .vtt</option>
         </select>
         <button type="submit" class="btn btn-primary">检索</button>
       </form>
@@ -31,7 +33,8 @@
         {% for a in assets %}
           <tr>
             <td>
-              {% if a.kind == "video" %}<i class="ti ti-movie text-red"></i>
+              {% if '_asr.' in a.name %}<i class="ti ti-microphone text-violet"></i>
+              {% elif a.kind == "video" %}<i class="ti ti-movie text-red"></i>
               {% elif a.kind == "doc" %}<i class="ti ti-file-text text-blue"></i>
               {% else %}<i class="ti ti-file text-muted"></i>{% endif %}
               <span class="text-muted">{{ a.ext }}</span>
@@ -49,6 +52,29 @@
         </tbody>
       </table>
     </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header"><h3 class="card-title">历史 ASR 转写缓存</h3></div>
+  <div class="card-body text-muted">旧任务的机器转写保存在分析缓存中。新任务会同时在上方生成可下载的 TXT 整理稿和 SRT 原始时间轴。</div>
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <thead><tr><th>缓存编号</th><th>状态</th><th>片段数</th><th>修改时间</th><th></th></tr></thead>
+      <tbody>
+      {% for item in asr_caches %}
+      <tr>
+        <td class="font-monospace">{{ item.short_name }}…</td>
+        <td>{{ item.status }}</td>
+        <td>{{ item.segments }}</td>
+        <td class="text-muted">{{ item.mtime }}</td>
+        <td class="text-end"><a class="btn btn-sm btn-ghost-secondary" href="{{ url_for('asr_cache_file', name=item.name) }}">查看转写</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="text-muted text-center">暂无 ASR 转写缓存</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 {% endblock %}

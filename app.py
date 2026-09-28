@@ -27,7 +27,7 @@ from api import app as api_app, parse_video as api_parse_video, download_video a
 import auth_db
 from auth_middleware import SessionAuthMiddleware
 from utils.url_safety import fetch_public_response, open_public_stream
-from video_analysis import analyze_video_evidence_first
+from video_analysis import analyze_video_evidence_first, format_asr_srt
 
 # 加载环境变量
 load_dotenv()
@@ -836,22 +836,45 @@ async def _async_download_video(progress, video_info: dict) -> Tuple[str, str]:
             return None, msg
 
 
-def extract_video_content(multi_speaker: bool = False, video_info: dict | None = None, progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str, object]:
+def _analysis_result(content: str, status: str, report_path: str | None = None,
+                     asr_text_path: str | None = None, asr_srt_path: str | None = None) -> tuple:
+    return (
+        content, status,
+        gr.update(value=report_path, visible=bool(report_path)),
+        gr.update(value=asr_text_path, visible=bool(asr_text_path)),
+        gr.update(value=asr_srt_path, visible=bool(asr_srt_path)),
+    )
+
+
+def _asr_status_label(status: str) -> str:
+    return {
+        "timestamped": "转写完成（带时间戳）",
+        "chunk_timestamped": "转写完成（分块时间戳）",
+        "partial": "部分转写成功",
+        "coarse": "转写完成（无句级时间戳）",
+        "no_audio": "视频没有音轨",
+        "not_configured": "语音识别未配置",
+        "asr_failed": "语音识别失败",
+        "extract_failed": "音轨提取失败",
+        "empty": "未识别到语音",
+    }.get(status, status or "未知")
+
+
+def extract_video_content(multi_speaker: bool = False, video_info: dict | None = None, progress=gr.Progress(), request: gr.Request = None) -> tuple:
     """
     按时间轴建立多模态证据后生成视频分析。
 
-    Returns:
-        (content_text, status_message)
+    Returns: report, status, report download, readable ASR download, raw SRT download.
     """
     user = _vp_session_from_request(request)
     if not user:
-        return "🔒 请先登录后再使用此功能 / Please sign in first", "🔒 请先登录后再使用此功能 / Please sign in first", gr.update(value=None, visible=False)
+        return _analysis_result("🔒 请先登录后再使用此功能 / Please sign in first", "🔒 请先登录后再使用此功能 / Please sign in first")
     if not video_info:
-        return REPORT_PLACEHOLDER, "请先解析视频", gr.update(value=None, visible=False)
+        return _analysis_result(REPORT_PLACEHOLDER, "请先解析视频")
     metric_platform = video_info.get("platform", "其他")
     if not AI_ANALYSIS_ENABLED:
         auth_db.record_usage("analysis", metric_platform, "unsupported", "disabled")
-        return REPORT_PLACEHOLDER, "AI 分析暂未启用：模型服务账号尚未完成配置", gr.update(value=None, visible=False)
+        return _analysis_result(REPORT_PLACEHOLDER, "AI 分析暂未启用：模型服务账号尚未完成配置")
 
     video_id = video_info.get('video_id', 'video')
 
@@ -861,33 +884,33 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
 
     if not _ANALYSIS_SLOTS.acquire(blocking=False):
         auth_db.record_usage("analysis", metric_platform, "busy")
-        return REPORT_PLACEHOLDER, "当前有分析任务正在运行，请稍后重试", gr.update(value=None, visible=False)
+        return _analysis_result(REPORT_PLACEHOLDER, "当前有分析任务正在运行，请稍后重试")
 
     started = time.monotonic()
     try:
         if not os.path.exists(cache_path):
             if not _media_disk_available():
                 auth_db.record_usage("analysis", metric_platform, "failed", "error")
-                return REPORT_PLACEHOLDER, "服务器存储空间不足，请稍后重试", gr.update(value=None, visible=False)
+                return _analysis_result(REPORT_PLACEHOLDER, "服务器存储空间不足，请稍后重试")
             if not _TRANSFER_SLOTS.acquire(blocking=False):
                 auth_db.record_usage("analysis", metric_platform, "busy")
-                return REPORT_PLACEHOLDER, "当前视频加载任务较多，请稍后重试", gr.update(value=None, visible=False)
+                return _analysis_result(REPORT_PLACEHOLDER, "当前视频加载任务较多，请稍后重试")
             try:
                 if not _allow_user_action(user, "play", 10):
                     auth_db.record_usage("analysis", metric_platform, "quota")
-                    return REPORT_PLACEHOLDER, "今日视频加载次数已用完，请明天再试", gr.update(value=None, visible=False)
+                    return _analysis_result(REPORT_PLACEHOLDER, "今日视频加载次数已用完，请明天再试")
                 import asyncio
                 loaded_path, load_status = asyncio.run(_async_play_video(progress, video_info))
             finally:
                 _TRANSFER_SLOTS.release()
             if not loaded_path:
                 auth_db.record_usage("analysis", metric_platform, "failed", "upstream", int((time.monotonic() - started) * 1000))
-                return REPORT_PLACEHOLDER, f"视频加载失败：{load_status}", gr.update(value=None, visible=False)
+                return _analysis_result(REPORT_PLACEHOLDER, f"视频加载失败：{load_status}")
             cache_path = loaded_path
 
         if not _allow_user_action(user, "analysis", 2):
             auth_db.record_usage("analysis", metric_platform, "quota")
-            return REPORT_PLACEHOLDER, "今日 AI 分析次数已用完，请明天再试", gr.update(value=None, visible=False)
+            return _analysis_result(REPORT_PLACEHOLDER, "今日 AI 分析次数已用完，请明天再试")
         qwen_client = OpenAI(
             base_url=QWEN_API_BASE_URL,
             api_key=QWEN_API_KEY,
@@ -911,22 +934,53 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
         diarize_note = "多人转写已开启" if multi_speaker else ""
         status = (
             f"证据优先分析完成：{len(evidence.frames)} 个时间点，"
-            f"{len(evidence.subtitles)} 条字幕，ASR={evidence.transcript_status} {diarize_note}"
+            f"{len(evidence.subtitles)} 条字幕，ASR：{_asr_status_label(evidence.transcript_status)} {diarize_note}"
         )
         reports_dir = os.path.join(client.download_dir, "reports")
         os.makedirs(reports_dir, exist_ok=True)
         safe_id = "".join(c for c in str(video_id) if c.isalnum())[:30] or "video"
-        report_path = os.path.join(reports_dir, f"{safe_id}_{int(time.time())}_{secrets.token_hex(6)}.md")
+        export_base = f"{safe_id}_{int(time.time())}_{secrets.token_hex(6)}"
+        report_path = os.path.join(reports_dir, export_base + ".md")
         with open(report_path, "w", encoding="utf-8", newline="\n") as report_file:
             report_file.write(result)
+        asr_text_path = asr_srt_path = None
+        if evidence.raw_transcript:
+            asr_text_path = os.path.join(reports_dir, export_base + "_asr.txt")
+            asr_srt_path = os.path.join(reports_dir, export_base + "_asr.srt")
+            raw_lines = "\n".join(
+                f"[{cue.start:.2f}–{cue.end:.2f}] {cue.text}" for cue in evidence.raw_transcript
+            )
+            readable = (evidence.cleaned_transcript or raw_lines).strip()
+            asr_warnings = [str(warning) for warning in getattr(evidence, "warnings", [])
+                            if "ASR" in str(warning) or "转写" in str(warning)]
+            warning_note = ("识别提示：" + "；".join(asr_warnings) + "\n") if asr_warnings else ""
+            plain_text = (
+                "ASR 机器转写（未人工校对）\n"
+                f"识别状态：{_asr_status_label(evidence.transcript_status)}\n"
+                f"{warning_note}"
+                "整理稿可能调整断句和标点；原始时间戳与识别文本请以 SRT 为准。\n\n"
+                f"{readable}\n"
+            )
+            try:
+                with open(asr_text_path, "w", encoding="utf-8", newline="\n") as text_file:
+                    text_file.write(plain_text)
+                with open(asr_srt_path, "w", encoding="utf-8", newline="\n") as srt_file:
+                    srt_file.write(format_asr_srt(evidence.raw_transcript))
+            except OSError:
+                logging.exception("Unable to save ASR exports")
+                for path in (asr_text_path, asr_srt_path):
+                    if os.path.exists(path):
+                        os.remove(path)
+                asr_text_path = asr_srt_path = None
+                status += "；ASR 转写文件保存失败"
         auth_db.record_usage("analysis", metric_platform, "success", duration_ms=int((time.monotonic() - started) * 1000))
-        return result, status, gr.update(value=report_path, visible=True)
+        return _analysis_result(result, status, report_path, asr_text_path, asr_srt_path)
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         auth_db.record_usage("analysis", metric_platform, "failed", "error", int((time.monotonic() - started) * 1000))
-        return "", f"提取失败: {str(e)}", gr.update(value=None, visible=False)
+        return _analysis_result("", f"提取失败: {str(e)}")
     finally:
         _ANALYSIS_SLOTS.release()
 
@@ -1350,7 +1404,9 @@ def clear_all():
     """清空所有内容"""
     return ("", "自动检测", "", INFO_BAR_EMPTY,
             gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
-            REPORT_PLACEHOLDER, gr.update(value=None, visible=False), EMPTY_GUIDE_HTML, {})
+            REPORT_PLACEHOLDER, gr.update(value=None, visible=False),
+            gr.update(value=None, visible=False), gr.update(value=None, visible=False),
+            EMPTY_GUIDE_HTML, {})
 
 
 # ==================== Gradio 界面 ====================
@@ -1643,6 +1699,9 @@ def create_app():
                 visible=False,
                 elem_id="vp_report_download",
             )
+            with gr.Row():
+                asr_text_output = gr.File(label="下载 ASR 整理稿（TXT）", visible=False)
+                asr_srt_output = gr.File(label="下载 ASR 原始字幕（SRT）", visible=False)
 
         # 解析结果保存在每个 Gradio 会话内，避免不同用户覆盖彼此的视频。
         video_url_state = gr.State("")
@@ -1687,7 +1746,7 @@ def create_app():
             fn=extract_video_content,
             js=_gate_js("extract"),
             inputs=[multi_speaker_chk, video_info_state],
-            outputs=[content_output, status_output, report_file_output]
+            outputs=[content_output, status_output, report_file_output, asr_text_output, asr_srt_output]
         )
 
         clear_btn.click(
@@ -1695,7 +1754,8 @@ def create_app():
             inputs=[],
             outputs=[url_input, platform_dropdown, status_output, title_bar,
                     cover_output, video_output, download_output, content_output,
-                    report_file_output, guide_html, video_info_state]
+                    report_file_output, asr_text_output, asr_srt_output,
+                    guide_html, video_info_state]
         )
 
         # 使用指南（双列横向卡，打破同构小卡网格）

@@ -76,6 +76,7 @@ class EvidenceBundle:
     visual_observations: str = ""
     analysis_payload: dict = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    raw_transcript: list[TimedText] = field(default_factory=list)
 
 
 def _env_int(name: str, default: int, minimum: int = 1) -> int:
@@ -2548,6 +2549,25 @@ def format_asr_transcript_for_delivery(text: str, paragraph_chars: int = 420) ->
     return "\n\n".join(paragraphs)
 
 
+def format_asr_srt(cues: Sequence[TimedText]) -> str:
+    """Export timestamped machine transcription without model-edited wording."""
+    def stamp(seconds: float) -> str:
+        milliseconds = max(0, round(float(seconds) * 1000))
+        hours, remainder = divmod(milliseconds, 3_600_000)
+        minutes, remainder = divmod(remainder, 60_000)
+        seconds_part, millis = divmod(remainder, 1_000)
+        return f"{hours:02d}:{minutes:02d}:{seconds_part:02d},{millis:03d}"
+
+    blocks = []
+    for index, cue in enumerate(cues, 1):
+        start = max(0.0, float(cue.start))
+        end = max(start + 0.1, float(cue.end))
+        speaker = f"Speaker_{cue.speaker}: " if cue.speaker else ""
+        text = str(cue.text).strip().replace("\r", " ").replace("\n", " ")
+        blocks.append(f"{index}\n{stamp(start)} --> {stamp(end)}\n{speaker}{text}")
+    return "\n\n".join(blocks) + ("\n" if blocks else "")
+
+
 def analyze_video_evidence_first(
     video_path: str,
     client: OpenAI,
@@ -2593,6 +2613,7 @@ def analyze_video_evidence_first(
             transcript=transcript,
             transcript_status=transcript_status,
             warnings=warnings,
+            raw_transcript=list(transcript),
         )
 
         diarize_on = diarize or _asr_diarize_enabled()
