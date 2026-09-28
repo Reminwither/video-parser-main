@@ -172,6 +172,8 @@ def detect_platform(url: str) -> str:
         return "快手"
     elif 'haokan.baidu.com' in url_lower:
         return "好看视频"
+    elif 'pearvideo.com' in url_lower:
+        return "梨视频"
     return "自动检测"
 
 
@@ -547,11 +549,6 @@ async def _async_play_video(progress, video_info: dict) -> Tuple[str, str]:
     platform = video_info.get('platform', '')
     original_url = video_info.get('original_url', '')
 
-    # 获取视频下载地址
-    download_url = await client.get_download_url(video_url, video_id, original_url)
-    if download_url:
-        video_url = download_url
-
     if not video_url:
         return None, "未找到视频链接"
 
@@ -722,11 +719,6 @@ async def _async_download_video(progress, video_info: dict) -> Tuple[str, str]:
     title = video_info.get('title', 'video')
     platform = video_info.get('platform', '')
     original_url = video_info.get('original_url', '')
-
-    # 获取视频下载地址
-    download_url = await client.get_download_url(video_url, video_id, original_url)
-    if download_url:
-        video_url = download_url
 
     if not video_url:
         return None, "未找到视频链接"
@@ -957,16 +949,16 @@ THEME_SCRIPT = """
       nav_login: "登录", nav_start: "开始使用", nav_logout: "退出",
       hero_eyebrow: "视频智能分析平台",
       hero_title_a: "解析 · 下载 · ", hero_title_b: "AI 取证",
-      hero_sub: "粘贴抖音、哔哩哔哩、小红书、快手、好看视频链接，在线播放、下载无水印原画，并按时间轴生成多模态证据报告。",
+      hero_sub: "粘贴公开视频链接，解析可访问的媒体资源，播放或下载，并按时间轴生成多模态证据报告。不同平台的可用性取决于其访问限制。",
       sec_parse: "解析视频", sec_preview: "预览", sec_report: "AI 取证报告", sec_help: "使用指南",
       empty_head: "等待视频解析",
       empty_desc: "在左侧粘贴视频链接并点击「解析视频」，即可在此生成封面与在线播放",
       empty_s1: "粘贴链接", empty_s2: "解析视频", empty_s3: "AI 取证",
-      help_t1: "粘贴链接", help_d1: "支持抖音 / 哔哩哔哩 / 小红书 / 快手 / 好看视频分享链接，自动识别平台",
+      help_t1: "粘贴链接", help_d1: "可尝试哔哩哔哩、梨视频及其他支持的平台分享链接；受平台访问限制影响的链接可能无法解析",
       help_t2: "解析视频", help_d2: "封面、时长与视频信息一屏展示，无需手动选择来源",
-      help_t3: "播放 / 下载", help_d3: "在线播放走本地缓存，下载输出无水印原画（B 站自动合并音视频）",
+      help_t3: "播放 / 下载", help_d3: "在线播放使用临时缓存；可下载平台提供的媒体流（B 站自动合并音视频）",
       help_t4: "AI 取证分析", help_d4: "字幕 / 音频 / 画面逐段时间轴取证，支持多人转写输出分组稿",
-      help_notes: "下载的视频保存在 downloads 目录 · AI 分析前需先播放视频加载缓存",
+      help_notes: "生成的视频和报告将在约 48 小时后清理 · AI 分析前需先加载视频缓存",
       modal_title: "登录工作台", modal_sub: "视频解析 · AI 分析 · 多模态取证",
       modal_user: "用户名", modal_pass: "密码", modal_btn: "登 录", modal_loading: "登录中…",
       modal_foot_pre: "没有账号？", modal_foot_link: "立即注册",
@@ -982,16 +974,16 @@ THEME_SCRIPT = """
       nav_login: "Sign in", nav_start: "Get started", nav_logout: "Sign out",
       hero_eyebrow: "Video Intelligence Platform",
       hero_title_a: "Parse · Download · ", hero_title_b: "AI Evidence",
-      hero_sub: "Paste links from Douyin, Bilibili, Xiaohongshu, Kuaishou or Haokan, play online, download watermark-free originals, and generate a multimodal timeline evidence report.",
+      hero_sub: "Paste a public video link to parse an accessible media stream, play or download it, and generate a timeline evidence report. Availability depends on the source platform.",
       sec_parse: "Parse Video", sec_preview: "Preview", sec_report: "AI Evidence Report", sec_help: "Guide",
       empty_head: "Awaiting video",
       empty_desc: "Paste a link on the left and click Parse to generate cover and online playback here.",
       empty_s1: "Paste link", empty_s2: "Parse", empty_s3: "AI Evidence",
-      help_t1: "Paste link", help_d1: "Supports Douyin / Bilibili / Xiaohongshu / Kuaishou / Haokan share links with auto platform detection",
+      help_t1: "Paste link", help_d1: "Try Bilibili, Pear Video, or another supported source. Some links may be blocked by platform access rules.",
       help_t2: "Parse", help_d2: "Cover, duration and video info shown on one screen, no manual source selection",
-      help_t3: "Play / Download", help_d3: "Online playback uses local cache; downloads are watermark-free originals (Bilibili auto-merges audio)",
+      help_t3: "Play / Download", help_d3: "Playback uses temporary cache; downloads use the source media stream (Bilibili audio and video are merged)",
       help_t4: "AI Evidence", help_d4: "Timeline evidence from subtitles / audio / frames, with multi-speaker grouped transcripts",
-      help_notes: "Downloads are saved in the downloads folder · Play the video to load cache before AI analysis",
+      help_notes: "Generated media and reports are removed after about 48 hours · Load the video before AI analysis",
       modal_title: "Sign in to workspace", modal_sub: "Video parsing · AI analysis · multimodal evidence",
       modal_user: "Username", modal_pass: "Password", modal_btn: "Sign in", modal_loading: "Signing in…",
       modal_foot_pre: "No account? ", modal_foot_link: "Sign up",
@@ -1247,11 +1239,8 @@ def clear_all():
 
 # 示例视频链接
 EXAMPLE_URLS = {
-    "抖音": "https://www.douyin.com/note/7580598241298069157",
     "哔哩哔哩": "https://www.bilibili.com/video/BV1TaqYBcEJc",
-    "小红书": "https://www.xiaohongshu.com/explore/68ab2dd1000000001c0045d0?app_platform=android&ignoreEngage=true&app_version=9.13.1&share_from_user_hidden=true&xsec_source=app_share&type=video&xsec_token=CBLONm9tab3493BJUXCtvU8ScDzfYqa3cGwJstW8eSF3Y=&author_share=1&xhsshare=&shareRedId=OD04RDk1PUw2NzUyOTgwNjc7OThISj5O&apptime=1766754031&share_id=46cc1edc70704cd1ae467afb90d0e8e6&share_channel=wechat&wechatWid=94270060b457f72e6e3a2df13090e1d6&wechatOrigin=menu",
-    "快手": "https://www.kuaishou.com/short-video/3x8zha3ipq6bg8q?authorId=3xcyp2v85enrv7w&streamSource=find&area=homexxbrilliant",
-    "好看视频": "https://haokan.baidu.com/v?vid=13766973483433940333&tab=recommend",
+    "梨视频": "https://www.pearvideo.com/video_1795870",
 }
 
 
@@ -1408,7 +1397,7 @@ def create_app():
             <section class="vp-hero">
               <div class="vp-hero-eyebrow"><span class="vp-hero-dot"></span><span data-i18n="hero_eyebrow">视频智能分析平台</span></div>
               <h1 class="vp-hero-title"><span data-i18n="hero_title_a">解析 · 下载 · </span><span class="vp-hero-accent" data-i18n="hero_title_b">AI 取证</span></h1>
-              <p class="vp-hero-sub" data-i18n="hero_sub">粘贴抖音、哔哩哔哩、小红书、快手、好看视频链接，在线播放、下载无水印原画，并按时间轴生成多模态证据报告。</p>
+              <p class="vp-hero-sub" data-i18n="hero_sub">粘贴公开视频链接，解析可访问的媒体资源，播放或下载，并按时间轴生成多模态证据报告。不同平台的可用性取决于其访问限制。</p>
             </section>
             """
         )
@@ -1435,7 +1424,7 @@ def create_app():
                 gr.HTML('<div class="vp-section-label"><span class="vp-section-num">01</span><span data-i18n="sec_parse">解析视频</span></div>')
                 url_input = gr.Textbox(
                     label="视频链接",
-                    placeholder="粘贴抖音 / B站 / 小红书 / 快手 / 好看视频分享链接…",
+                    placeholder="粘贴公开视频分享链接，例如 B 站或梨视频…",
                     lines=3,
                     elem_id="vp_in_url",
                     elem_classes=["vp-url"]
@@ -1451,17 +1440,14 @@ def create_app():
 
                 # 示例链接（轻量文字 chips）
                 with gr.Row():
-                    douyin_btn = gr.Button("抖音", size="sm", elem_classes=["example-btn"])
                     bilibili_btn = gr.Button("哔哩哔哩", size="sm", elem_classes=["example-btn"])
-                    xiaohongshu_btn = gr.Button("小红书", size="sm", elem_classes=["example-btn"])
-                    kuaishou_btn = gr.Button("快手", size="sm", elem_classes=["example-btn"])
-                    haokan_btn = gr.Button("好看视频", size="sm", elem_classes=["example-btn"])
+                    pear_btn = gr.Button("梨视频", size="sm", elem_classes=["example-btn"])
 
                 # 平台选择与清空（次级）
                 with gr.Row(equal_height=True):
                     platform_dropdown = gr.Dropdown(
                         label="来源平台",
-                        choices=["自动检测", "抖音", "哔哩哔哩", "小红书", "快手", "好看视频"],
+                        choices=["自动检测", "哔哩哔哩", "梨视频", "抖音", "小红书", "快手", "好看视频"],
                         value="自动检测",
                         interactive=True,
                         elem_id="vp_dd_platform",
@@ -1547,28 +1533,13 @@ def create_app():
         video_info_state = gr.State({})
 
         # 示例链接按钮事件绑定
-        douyin_btn.click(
-            fn=lambda: fill_example("抖音"),
-            inputs=[],
-            outputs=[url_input, platform_dropdown]
-        )
         bilibili_btn.click(
             fn=lambda: fill_example("哔哩哔哩"),
             inputs=[],
             outputs=[url_input, platform_dropdown]
         )
-        xiaohongshu_btn.click(
-            fn=lambda: fill_example("小红书"),
-            inputs=[],
-            outputs=[url_input, platform_dropdown]
-        )
-        kuaishou_btn.click(
-            fn=lambda: fill_example("快手"),
-            inputs=[],
-            outputs=[url_input, platform_dropdown]
-        )
-        haokan_btn.click(
-            fn=lambda: fill_example("好看视频"),
+        pear_btn.click(
+            fn=lambda: fill_example("梨视频"),
             inputs=[],
             outputs=[url_input, platform_dropdown]
         )
@@ -1619,7 +1590,7 @@ def create_app():
                 <div class="vp-help-item">
                   <div class="vp-help-step">01</div>
                   <div class="vp-help-title" data-i18n="help_t1">粘贴链接</div>
-                  <div class="vp-help-desc" data-i18n="help_d1">支持抖音 / 哔哩哔哩 / 小红书 / 快手 / 好看视频分享链接，自动识别平台</div>
+                  <div class="vp-help-desc" data-i18n="help_d1">可尝试哔哩哔哩、梨视频及其他支持的平台分享链接；受平台访问限制影响的链接可能无法解析</div>
                 </div>
                 <div class="vp-help-item">
                   <div class="vp-help-step">02</div>
@@ -1629,7 +1600,7 @@ def create_app():
                 <div class="vp-help-item">
                   <div class="vp-help-step">03</div>
                   <div class="vp-help-title" data-i18n="help_t3">播放 / 下载</div>
-                  <div class="vp-help-desc" data-i18n="help_d3">在线播放走本地缓存，下载输出无水印原画（B 站自动合并音视频）</div>
+                  <div class="vp-help-desc" data-i18n="help_d3">在线播放使用临时缓存；可下载平台提供的媒体流（B 站自动合并音视频）</div>
                 </div>
                 <div class="vp-help-item">
                   <div class="vp-help-step">04</div>
@@ -1637,7 +1608,7 @@ def create_app():
                   <div class="vp-help-desc" data-i18n="help_d4">字幕 / 音频 / 画面逐段时间轴取证，支持多人转写输出分组稿</div>
                 </div>
               </div>
-              <div class="vp-help-notes" data-i18n="help_notes">下载的视频保存在 downloads 目录 · AI 分析前需先播放视频加载缓存</div>
+              <div class="vp-help-notes" data-i18n="help_notes">生成的视频和报告将在约 48 小时后清理 · AI 分析前需先加载视频缓存</div>
             </div>
             """
         )

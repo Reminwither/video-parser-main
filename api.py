@@ -526,7 +526,7 @@ async def parse_video(
 
         # 小红书平台特殊处理（重试机制）
         if platform == '小红书':
-            max_attempts = 5
+            max_attempts = 2
             attempts = 0
             while attempts < max_attempts:
                 downloader = DownloaderFactory.create_downloader(platform, real_url)
@@ -538,7 +538,7 @@ async def parse_video(
                 attempts += 1
                 logger.debug(f"Attempt {attempts} failed. Retrying...")
             if not video_url:
-                logger.error("Failed to retrieve video URL after 5 attempts.")
+                logger.error("Failed to retrieve video URL after 2 attempts.")
         else:
             downloader = DownloaderFactory.create_downloader(platform, real_url)
             title = downloader.get_title_content()
@@ -592,7 +592,7 @@ async def parse_video(
         traceback.print_exc()
         return JSONResponse(
             status_code=500,
-            content=make_response(500, '功能太火爆啦，请稍后再试', None, None, False)
+            content=make_response(500, '平台暂时无法解析该链接，请检查链接是否有效或稍后重试', None, None, False)
         )
 
 

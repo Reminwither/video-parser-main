@@ -1,67 +1,64 @@
+"""Read public Bilibili video metadata and DASH URLs from its JSON endpoints."""
+
 import re
-import json
-import random
+from urllib.parse import parse_qs, urlencode, urlsplit
+
 from src.downloaders.base_downloader import BaseDownloader
-from configs.general_constants import USER_AGENT_PC
-from configs.logging_config import logger
+from utils.url_safety import fetch_public_response
 
 
 class BilibiliDownloader(BaseDownloader):
     def __init__(self, real_url):
         super().__init__(real_url)
+        match = re.search(r"/video/(BV[0-9A-Za-z]{10})(?:/|$)", urlsplit(real_url).path)
+        if not match:
+            raise ValueError("请提供有效的 B 站 BV 视频链接")
+        self.bvid = match.group(1)
+        params = parse_qs(urlsplit(real_url).query)
+        try:
+            page = max(1, int(params.get("p", ["1"])[0]))
+        except ValueError:
+            page = 1
         self.headers = {
-            "content-type": "application/json; charset=UTF-8",
-            'User-Agent': random.choice(USER_AGENT_PC),
-            'referer': self.real_url
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36",
+            "Referer": f"https://www.bilibili.com/video/{self.bvid}",
         }
-        self.data, self.data2 = self.fetch_html_data()
+        self.info = self._json("https://api.bilibili.com/x/web-interface/view?" + urlencode({"bvid": self.bvid})).get("data") or {}
+        pages = self.info.get("pages") or []
+        if page > len(pages) or not pages:
+            raise ValueError("B 站视频分集不存在")
+        self.page = pages[page - 1]
+        play_url = "https://api.bilibili.com/x/player/playurl?" + urlencode({
+            "bvid": self.bvid, "cid": self.page["cid"], "qn": 80, "fnval": 16, "fourk": 1,
+        })
+        self.play = self._json(play_url).get("data") or {}
 
-    def fetch_html_data(self):
-        self.html_content = self.fetch_html_content()
-        pattern_playinfo = re.compile(r'window\.__playinfo__\s*=\s*(\{.*\})', re.DOTALL)
-        json_data = BaseDownloader.parse_html_data(self.html_content, pattern_playinfo)
-        pattern_initial = re.compile(r'window\.__INITIAL_STATE__\s*=\s*(\{.*\});', re.DOTALL)
-        json_data2 = BaseDownloader.parse_html_data(self.html_content, pattern_initial)
-        return json_data, json_data2
+    def _json(self, url):
+        response = fetch_public_response(url, headers=self.headers, timeout=(5, 15), max_bytes=3 * 1024 * 1024)
+        try:
+            payload = response.json()
+        finally:
+            response.close()
+        if payload.get("code") != 0:
+            raise RuntimeError(f"B 站接口暂不可用（{payload.get('code')}）")
+        return payload
 
     def get_real_video_url(self):
-        try:
-            data_dict = json.loads(self.data)
-            video_url = data_dict['data']['dash']['video'][0]['baseUrl']
-            return video_url
-        except (KeyError, json.JSONDecodeError) as e:
-            logger.warning(f"Failed to parse video URL: {e}")
+        videos = (self.play.get("dash") or {}).get("video") or []
+        if videos:
+            return videos[0].get("baseUrl") or videos[0].get("base_url")
+        direct = self.play.get("durl") or []
+        return direct[0].get("url") if direct else None
 
     def get_audio_url(self):
-        """获取音频URL"""
-        try:
-            data_dict = json.loads(self.data)
-            audio_url = data_dict['data']['dash']['audio'][0]['baseUrl']
-            return audio_url
-        except (KeyError, json.JSONDecodeError) as e:
-            logger.warning(f"Failed to parse audio URL: {e}")
-            return None
+        audio = (self.play.get("dash") or {}).get("audio") or []
+        return (audio[0].get("baseUrl") or audio[0].get("base_url")) if audio else None
 
     def get_title_content(self):
-        try:
-            data_dict = json.loads(self.data2)
-            title_content = data_dict['videoData']['title']
-            return title_content
-        except (KeyError, json.JSONDecodeError) as e:
-            logger.warning(f"Failed to parse title content:: {e}")
+        title = self.info.get("title") or ""
+        if len(self.info.get("pages") or []) > 1:
+            title += " - " + (self.page.get("part") or f"P{self.page.get('page', 1)}")
+        return title
 
     def get_cover_photo_url(self):
-        try:
-            data_dict = json.loads(self.data2)
-            cover_url = data_dict['videoData']['pic']
-            return cover_url
-        except (KeyError, json.JSONDecodeError) as e:
-            logger.warning(f"Failed to parse cover URL: {e}")
-
-
-if __name__ == '__main__':
-    real_url = 'https://www.bilibili.com/video/BV1df421v7xm/?share_source=copy_web&vd_source=5ac2e55972f5e2fd96b63d01ee42ff01'
-    bilibili_dl = BilibiliDownloader(real_url)
-    print(bilibili_dl.get_title_content())
-    print(bilibili_dl.get_cover_photo_url())
-    print(bilibili_dl.get_real_video_url())
+        return self.info.get("pic")

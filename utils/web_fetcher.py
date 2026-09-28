@@ -128,6 +128,11 @@ class UrlParser:
             video_id = query_params.get('v', [None])[0]
             if video_id:
                 address = f"{parsed_url.scheme}://{domain}/watch?v={video_id}"
+        elif platform == "哔哩哔哩":
+            query_params = parse_qs(parsed_url.query)
+            page = query_params.get('p', [None])[0]
+            if page and page.isdigit() and int(page) > 1:
+                address += f"?p={int(page)}"
         return address
 
     @staticmethod
