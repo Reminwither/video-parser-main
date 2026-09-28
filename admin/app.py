@@ -301,10 +301,12 @@ def get_usage_stats():
 
 
 def get_resource_stats():
-    """Seven-day provider units; these are measurements, not invoice amounts."""
+    """Seven-day provider units and a clearly bounded paid-provider scenario."""
     data = {"ready": False, "model_calls": 0, "model_failed": 0,
             "unreported": 0, "input_tokens": 0, "output_tokens": 0,
-            "asr_calls": 0, "asr_failed": 0, "audio_minutes": 0.0, "rows": []}
+            "asr_calls": 0, "asr_failed": 0, "audio_minutes": 0.0, "rows": [],
+            "model_reference_cny": 0.0, "asr_reference_cny": 0.0,
+            "unpriced_model_calls": 0, "unpriced_asr_calls": 0}
     try:
         c = ro_conn()
         rows = c.execute(
@@ -325,15 +327,30 @@ def get_resource_stats():
             data["unreported"] += unreported
             data["input_tokens"] += input_tokens
             data["output_tokens"] += output_tokens
+            if model in {"Qwen/Qwen3.5-27B", "qwen3.5-27b"}:
+                # Alibaba Cloud Model Studio, Beijing, qwen3.5-27b,
+                # <=128K input tokens per request, 2026-09-28 list rates.
+                data["model_reference_cny"] += (
+                    input_tokens * 0.6 + output_tokens * 4.8
+                ) / 1_000_000
+            else:
+                data["unpriced_model_calls"] += calls
         elif provider == "tencent-asr":
             data["asr_calls"] += calls
             data["asr_failed"] += failed
             data["audio_minutes"] += audio_ms / 60000
+            if operation == "flash-transcribe" and model == "16k_zh":
+                # Tencent ASR flash, first postpaid tier, before free packs.
+                data["asr_reference_cny"] += audio_ms / 3_600_000 * 3.10
+            else:
+                data["unpriced_asr_calls"] += calls
         data["rows"].append({"provider": provider, "operation": operation,
                              "model": model, "calls": calls, "failed": failed,
                              "input_tokens": input_tokens, "output_tokens": output_tokens,
                              "audio_minutes": round(audio_ms / 60000, 2)})
     data["audio_minutes"] = round(data["audio_minutes"], 2)
+    data["model_reference_cny"] = round(data["model_reference_cny"], 4)
+    data["asr_reference_cny"] = round(data["asr_reference_cny"], 4)
     return data
 
 

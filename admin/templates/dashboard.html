@@ -87,6 +87,8 @@
         <div class="col-sm-6 col-lg-3"><strong>{{ r.audio_minutes }}</strong> 分钟提交音频</div>
       </div>
       <div class="text-muted mt-2">{{ r.unreported }} 次成功模型请求未返回 token 用量。音频为提交时长；上述数字不是服务商账单或金额。</div>
+      <div class="mt-3"><strong>商业接口参考边际费：</strong>模型约 ¥{{ '%.4f'|format(r.model_reference_cny) }}，腾讯云极速转写约 ¥{{ '%.4f'|format(r.asr_reference_cny) }}。</div>
+      <div class="text-muted mt-1">按 2026-09-28 公布的<a href="https://help.aliyun.com/zh/model-studio/model-pricing" target="_blank" rel="noopener noreferrer">百炼北京 qwen3.5-27b 价格</a>（每次输入不超过 128K token）及<a href="https://cloud.tencent.com/document/product/1093/35686" target="_blank" rel="noopener noreferrer">腾讯云极速版首档后付费价格</a>计算。仅覆盖有用量回传的同款模型和普通极速转写；不含 {{ r.unreported }} 次未回传 token 的模型请求、{{ r.unpriced_model_calls }} 次其他模型请求、{{ r.unpriced_asr_calls }} 次其他语音请求、免费额度、资源包、税费和服务器费用，不代表当前账单。</div>
       {% else %}
       <div class="text-muted">新版本收到任务后开始记录服务用量。</div>
       {% endif %}
