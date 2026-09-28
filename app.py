@@ -16,6 +16,7 @@ import random
 import string
 import threading
 import requests
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -422,10 +423,18 @@ client = VideoClient()
 
 
 def _video_cache_key(video_info: dict) -> str:
-    if video_info.get("_cache_key"):
-        return video_info["_cache_key"]
+    supplied = video_info.get("_cache_key")
+    if isinstance(supplied, str) and re.fullmatch(r"vp-u[1-9][0-9]*-[0-9a-f]{32}", supplied):
+        return supplied
     identity = "|".join(str(video_info.get(key, "")) for key in ("platform", "video_id", "original_url"))
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+
+
+def _owns_uploaded_video(user: dict, video_info: dict) -> bool:
+    key = video_info.get("_cache_key")
+    if isinstance(key, str) and key.startswith("vp-u"):
+        return bool(re.fullmatch(rf"vp-u{int(user['id'])}-[0-9a-f]{{32}}", key))
+    return not video_info.get("_uploaded")
 
 
 _PARSE_SLOTS = threading.BoundedSemaphore(max(1, int(os.getenv("MAX_CONCURRENT_PARSE", "3"))))
@@ -473,7 +482,7 @@ def parse_video(url: str, platform: str, request: gr.Request = None) -> tuple:
             auth_db.record_usage("parse", metric_platform, "quota")
             return "今日解析次数已用完，请明天再试", _info_bar_html("今日解析次数已用完", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
         import asyncio
-        status, info, cover, video_url, guide, video_info = asyncio.run(_async_parse_video(url, platform))
+        status, info, cover, video_url, guide, video_info = asyncio.run(_async_parse_video(url, platform, user["id"]))
         auth_db.record_usage(
             "parse", video_info.get("platform", metric_platform) if video_info else metric_platform,
             "success" if video_info else "failed", "" if video_info else "upstream",
@@ -540,7 +549,7 @@ def upload_owned_video(file_path: str | None, platform: str, request: gr.Request
     try:
         if not _allow_user_action(user, "upload", 5):
             return rejected("今日视频上传次数已用完，请明天再试", "quota")
-        cache_key = secrets.token_hex(16)
+        cache_key = f"vp-u{int(user['id'])}-{secrets.token_hex(16)}"
         cache_path = Path(client.cache_dir) / f"{cache_key}_play.mp4"
         temporary_path = cache_path.with_suffix(".part")
         try:
@@ -564,7 +573,7 @@ def upload_owned_video(file_path: str | None, platform: str, request: gr.Request
             REPORT_PLACEHOLDER, gr.update(value=None, visible=False),
             gr.update(value=None, visible=False), gr.update(value=None, visible=False))
 
-async def _async_parse_video(url: str, platform: str) -> tuple:
+async def _async_parse_video(url: str, platform: str, owner_id: int) -> tuple:
 
     if not url or not url.strip():
         return "请输入视频链接", _info_bar_html("请输入视频链接", "", ok=False), None, "", EMPTY_GUIDE_HTML, {}
@@ -584,7 +593,7 @@ async def _async_parse_video(url: str, platform: str) -> tuple:
     if success:
         video_info = dict(data)
         video_info['original_url'] = url
-        video_info['_cache_key'] = secrets.token_hex(16)
+        video_info['_cache_key'] = f"vp-u{int(owner_id)}-{secrets.token_hex(16)}"
 
         title = data.get('title', '无标题')
         cover_url = data.get('cover_url', '')
@@ -647,6 +656,8 @@ def play_video(video_info: dict, progress=gr.Progress(), request: gr.Request = N
         return gr.update(visible=False), "🔒 请先登录后再使用此功能 / Please sign in first"
     if not video_info:
         return gr.update(visible=False), "请先解析视频"
+    if not _owns_uploaded_video(user, video_info):
+        return gr.update(visible=False), "无权访问该上传视频"
     if not _media_disk_available():
         return gr.update(visible=False), "服务器存储空间不足，请稍后重试"
     if not _TRANSFER_SLOTS.acquire(blocking=False):
@@ -822,6 +833,8 @@ def download_video(video_info: dict, progress=gr.Progress(), request: gr.Request
         return gr.update(visible=False), "🔒 请先登录后再使用此功能 / Please sign in first"
     if not video_info:
         return gr.update(visible=False), "请先解析视频"
+    if not _owns_uploaded_video(user, video_info):
+        return gr.update(visible=False), "无权访问该上传视频"
     if not _media_disk_available():
         return gr.update(visible=False), "服务器存储空间不足，请稍后重试"
     if not _TRANSFER_SLOTS.acquire(blocking=False):
@@ -953,6 +966,8 @@ def _asr_status_label(status: str) -> str:
 
 def _load_media_for_processing(user: dict, video_info: dict, progress) -> tuple[str | None, str, str]:
     """Return a cached local file, loading it once under the shared transfer quota."""
+    if not _owns_uploaded_video(user, video_info):
+        return None, "无权访问该上传视频", "forbidden"
     cache_path = os.path.join(client.cache_dir, f"{_video_cache_key(video_info)}_play.mp4")
     if os.path.isfile(cache_path) and os.path.getsize(cache_path) > 0:
         return cache_path, "", ""
@@ -972,11 +987,11 @@ def _load_media_for_processing(user: dict, video_info: dict, progress) -> tuple[
     return loaded_path, "", ""
 
 
-def _save_asr_exports(video_id: str, cues, status: str, readable: str, warnings=()) -> tuple[str, str]:
+def _save_asr_exports(owner_id: int, video_id: str, cues, status: str, readable: str, warnings=()) -> tuple[str, str]:
     reports_dir = os.path.join(client.download_dir, "reports")
     os.makedirs(reports_dir, exist_ok=True)
     safe_id = "".join(c for c in str(video_id) if c.isalnum())[:30] or "video"
-    export_base = f"{safe_id}_{int(time.time())}_{secrets.token_hex(6)}"
+    export_base = f"vp-u{int(owner_id)}-{safe_id}_{int(time.time())}_{secrets.token_hex(6)}"
     text_path = os.path.join(reports_dir, export_base + "_asr.txt")
     srt_path = os.path.join(reports_dir, export_base + "_asr.srt")
     warning_note = ("识别提示：" + "；".join(str(item) for item in warnings if item) + "\n") if warnings else ""
@@ -1039,7 +1054,7 @@ def transcribe_video_only(video_info: dict | None = None, progress=gr.Progress()
             return _analysis_result(REPORT_PLACEHOLDER, f"{_asr_status_label(transcript_status)}{detail}")
         readable = format_diarized_transcript(cues)
         text_path, srt_path = _save_asr_exports(
-            video_info.get("video_id", "video"), cues, transcript_status, readable, [warning] if warning else []
+            user["id"], video_info.get("video_id", "video"), cues, transcript_status, readable, [warning] if warning else []
         )
         auth_db.record_usage("transcribe", platform, "success", duration_ms=int((time.monotonic() - started) * 1000))
         preview = html.escape(readable[:12000])
@@ -1115,7 +1130,7 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
         reports_dir = os.path.join(client.download_dir, "reports")
         os.makedirs(reports_dir, exist_ok=True)
         safe_id = "".join(c for c in str(video_id) if c.isalnum())[:30] or "video"
-        export_base = f"{safe_id}_{int(time.time())}_{secrets.token_hex(6)}"
+        export_base = f"vp-u{int(user['id'])}-{safe_id}_{int(time.time())}_{secrets.token_hex(6)}"
         report_path = os.path.join(reports_dir, export_base + ".md")
         if evidence.raw_transcript:
             transcript_appendix = (
@@ -1140,7 +1155,7 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
                             if "ASR" in str(warning) or "转写" in str(warning)]
             try:
                 asr_text_path, asr_srt_path = _save_asr_exports(
-                    video_id, evidence.raw_transcript, evidence.transcript_status, readable, asr_warnings
+                    user["id"], video_id, evidence.raw_transcript, evidence.transcript_status, readable, asr_warnings
                 )
             except OSError:
                 status += "；ASR 转写文件保存失败"

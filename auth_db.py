@@ -162,6 +162,13 @@ def init_db() -> None:
                 submitted_audio_ms INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (day, provider, operation, model)
             );
+            CREATE TABLE IF NOT EXISTS uploaded_files (
+                path TEXT NOT NULL,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (path, user_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_uploaded_files_created ON uploaded_files(created_at);
             """
         )
         c.commit()
@@ -363,6 +370,28 @@ def delete_user_account(user_id: int, password: str) -> None:
         c.execute("DELETE FROM users WHERE id = ?", (user_id,))
         c.execute("DELETE FROM daily_quota WHERE subject = ?", (f"user:{user_id}",))
         c.commit()
+
+
+def register_uploaded_files(user_id: int, paths: list[str]) -> None:
+    """Record raw Gradio uploads so their file URLs remain private to uploaders."""
+    if not paths:
+        return
+    with _DB_LOCK:
+        c = _db()
+        c.executemany(
+            "INSERT OR IGNORE INTO uploaded_files(path, user_id, created_at) VALUES (?, ?, ?)",
+            [(path, int(user_id), _now()) for path in set(paths)],
+        )
+        c.execute("DELETE FROM uploaded_files WHERE created_at < ?", (_now() - 3 * 86400,))
+        c.commit()
+
+
+def uploaded_file_access(path: str, user_id: int) -> bool | None:
+    """True for an uploader, False for another user, None for an unknown file."""
+    rows = _db().execute("SELECT user_id FROM uploaded_files WHERE path = ?", (path,)).fetchall()
+    if not rows:
+        return None
+    return any(row["user_id"] == int(user_id) for row in rows)
 
 
 # ==================== 限流 ====================

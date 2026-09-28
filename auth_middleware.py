@@ -13,8 +13,11 @@
 """
 
 import ipaddress
+import json
 import os
-from urllib.parse import quote
+import re
+import tempfile
+from urllib.parse import quote, unquote
 
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -66,6 +69,51 @@ def _requires_login_json(path: str) -> bool:
     return False
 
 
+def _file_access_allowed(path: str, user_id: int) -> bool:
+    """Enforce ownership of private outputs and raw Gradio uploads."""
+    if not (path.startswith("/gradio_api/file=") or path.startswith("/file=")):
+        return True
+    file_path = os.path.realpath(unquote(path.split("file=", 1)[1]))
+    name = os.path.basename(file_path)
+    private = re.match(r"^vp-u([1-9][0-9]*)-", name)
+    if private:
+        return int(private.group(1)) == int(user_id)
+    # Reports created before per-user names were introduced have no recoverable
+    # ownership metadata, so revoke their old download links.
+    if "/reports/" in file_path.replace("\\", "/"):
+        return False
+    upload_access = auth_db.uploaded_file_access(file_path, user_id)
+    return upload_access is not False
+
+
+def _upload_response_paths(body: bytes) -> list[str]:
+    """Extract Gradio's server-side paths from its JSON upload response."""
+    try:
+        payload = json.loads(body)
+    except (ValueError, TypeError):
+        return []
+    paths = []
+    upload_root = os.path.realpath(os.getenv("GRADIO_TEMP_DIR") or os.path.join(tempfile.gettempdir(), "gradio"))
+
+    def visit(value):
+        if isinstance(value, str):
+            resolved = os.path.realpath(value)
+            try:
+                if os.path.isfile(resolved) and os.path.commonpath((resolved, upload_root)) == upload_root:
+                    paths.append(resolved)
+            except ValueError:
+                pass
+        elif isinstance(value, list):
+            for item in value:
+                visit(item)
+        elif isinstance(value, dict):
+            for item in value.values():
+                visit(item)
+
+    visit(payload)
+    return paths
+
+
 class SessionAuthMiddleware:
     def __init__(self, app: ASGIApp):
         self.app = app
@@ -83,6 +131,13 @@ class SessionAuthMiddleware:
         session = auth_db.get_session_user(token) if token else None
 
         if session:
+            if scope.get("type") == "http" and not _file_access_allowed(path, session["id"]):
+                await send({
+                    "type": "http.response.start", "status": 403,
+                    "headers": [(b"content-type", b"application/json; charset=utf-8")],
+                })
+                await send({"type": "http.response.body", "body": b'{"detail":"Forbidden"}'})
+                return
             action = {
                 "/api/parse": ("parse", 30),
                 "/api/download": ("download", 10),
@@ -110,7 +165,23 @@ class SessionAuthMiddleware:
             scope = dict(scope)
             scope["state"] = dict(scope.get("state") or {})
             scope["state"]["user"] = session
-            await self.app(scope, receive, send)
+            if scope.get("type") == "http" and scope.get("method") == "POST" and path == "/gradio_api/upload":
+                chunks = []
+                status = 0
+
+                async def record_upload(message):
+                    nonlocal status
+                    if message["type"] == "http.response.start":
+                        status = message["status"]
+                    elif message["type"] == "http.response.body" and status in (200, 201):
+                        chunks.append(message.get("body", b""))
+                        if not message.get("more_body", False):
+                            auth_db.register_uploaded_files(session["id"], _upload_response_paths(b"".join(chunks)))
+                    await send(message)
+
+                await self.app(scope, receive, record_upload)
+            else:
+                await self.app(scope, receive, send)
             return
 
         # ---- 未登录分支 ----
