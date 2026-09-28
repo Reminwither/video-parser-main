@@ -3,4 +3,6 @@ Description=Back up the video-parser authentication database
 
 [Service]
 Type=oneshot
+EnvironmentFile=/opt/video-parser/.env
+Environment=VIDEO_PARSER_BACKUP_COS_BUCKET=vidai-auth-backup-1316720169
 ExecStart=/usr/bin/python3 /usr/local/libexec/video-parser-backup-auth-db.py
