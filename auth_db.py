@@ -203,25 +203,31 @@ def create_user(username: str, password: str, is_admin: bool = False) -> int:
 
 
 def consume_daily_quota(subject: str, action: str, limit: int) -> bool:
-    """Atomically reserve one daily action; old counters are pruned on use."""
-    if limit <= 0:
+    return consume_daily_quotas([(subject, action, limit)])
+
+
+def consume_daily_quotas(items: list[tuple[str, str, int]]) -> bool:
+    """Atomically reserve several counters or none; prune old counters on use."""
+    if any(limit <= 0 for _, _, limit in items):
         return False
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     with _DB_LOCK:
         c = _db()
         c.execute("DELETE FROM daily_quota WHERE day < date(?, '-8 days')", (day,))
-        row = c.execute(
-            "SELECT count FROM daily_quota WHERE day = ? AND subject = ? AND action = ?",
-            (day, subject, action),
-        ).fetchone()
-        if row and row["count"] >= limit:
-            c.commit()
-            return False
-        c.execute(
-            "INSERT INTO daily_quota(day, subject, action, count) VALUES (?, ?, ?, 1) "
-            "ON CONFLICT(day, subject, action) DO UPDATE SET count = count + 1",
-            (day, subject, action),
-        )
+        for subject, action, limit in items:
+            row = c.execute(
+                "SELECT count FROM daily_quota WHERE day = ? AND subject = ? AND action = ?",
+                (day, subject, action),
+            ).fetchone()
+            if row and row["count"] >= limit:
+                c.commit()
+                return False
+        for subject, action, _ in items:
+            c.execute(
+                "INSERT INTO daily_quota(day, subject, action, count) VALUES (?, ?, ?, 1) "
+                "ON CONFLICT(day, subject, action) DO UPDATE SET count = count + 1",
+                (day, subject, action),
+            )
         c.commit()
         return True
 

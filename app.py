@@ -429,7 +429,12 @@ _ANALYSIS_SLOTS = threading.BoundedSemaphore(max(1, int(os.getenv("MAX_CONCURREN
 
 def _allow_user_action(user: dict, action: str, default_limit: int) -> bool:
     limit = max(0, int(os.getenv(f"DAILY_{action.upper()}_LIMIT", str(default_limit))))
-    return auth_db.consume_daily_quota(f"user:{user['id']}", action, limit)
+    site_default = {"parse": 300, "play": 50, "download": 50, "analysis": 10}[action]
+    site_limit = max(0, int(os.getenv(f"DAILY_SITE_{action.upper()}_LIMIT", str(site_default))))
+    return auth_db.consume_daily_quotas([
+        (f"user:{user['id']}", action, limit),
+        ("site", action, site_limit),
+    ])
 
 
 def _media_disk_available() -> bool:

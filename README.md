@@ -173,6 +173,7 @@ vim .env  # 编辑配置
 | `ALLOW_REGISTER` | 是否开放自助注册 | `0` |
 | `MAX_REGISTERED_USERS` / `REGISTER_PER_IP_DAILY` | 注册总人数 / 单 IP 每日注册上限 | `200` / `3` |
 | `DAILY_PARSE_LIMIT` / `DAILY_PLAY_LIMIT` / `DAILY_DOWNLOAD_LIMIT` / `DAILY_ANALYSIS_LIMIT` | 单账号每日操作次数上限（UTC 日） | `30` / `10` / `10` / `2` |
+| `DAILY_SITE_PARSE_LIMIT` / `DAILY_SITE_PLAY_LIMIT` / `DAILY_SITE_DOWNLOAD_LIMIT` / `DAILY_SITE_ANALYSIS_LIMIT` | 全站每日操作次数上限（UTC 日） | `300` / `50` / `50` / `10` |
 | `MAX_CONCURRENT_PARSE` / `MAX_CONCURRENT_TRANSFER` / `MAX_CONCURRENT_ANALYSIS` | 全站同时运行的任务数 | `3` / `2` / `1` |
 | `SESSION_COOKIE_SECURE` | HTTPS 代理下启用安全 Cookie | `0`（HTTPS 部署设为 `1`） |
 | `MAX_VIDEO_DOWNLOAD_MB` | 单个服务端缓存视频上限 | `200` |

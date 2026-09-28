@@ -85,7 +85,10 @@ class SessionAuthMiddleware:
             if scope.get("type") == "http" and scope.get("method") == "POST" and action:
                 name, default_limit = action
                 limit = max(0, int(os.getenv(f"DAILY_{name.upper()}_LIMIT", str(default_limit))))
-                if not auth_db.consume_daily_quota(f"user:{session['id']}", name, limit):
+                site_limit = max(0, int(os.getenv(f"DAILY_SITE_{name.upper()}_LIMIT", "300" if name == "parse" else "50")))
+                if not auth_db.consume_daily_quotas([
+                    (f"user:{session['id']}", name, limit), ("site", name, site_limit),
+                ]):
                     await send({
                         "type": "http.response.start", "status": 429,
                         "headers": [(b"content-type", b"application/json; charset=utf-8")],
