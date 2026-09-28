@@ -1092,8 +1092,8 @@ REPORT_PLACEHOLDER = """
       <path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
     </svg>
   </div>
-  <div class="vp-report-empty-head">分析报告将在这里生成</div>
-  <div class="vp-report-empty-sub">先解析视频，再点击「AI 时间轴证据分析」；所需视频会自动加载</div>
+  <div class="vp-report-empty-head">分析与转写结果将在这里生成</div>
+  <div class="vp-report-empty-sub">先解析视频，再选择「仅语音转写」或「AI 时间轴证据分析」；视频会自动加载</div>
 </div>
 """
 
@@ -1160,15 +1160,15 @@ THEME_SCRIPT = """
       hero_eyebrow: "视频智能分析平台",
       hero_title_a: "解析 · 下载 · ", hero_title_b: "AI 取证",
       hero_sub: "粘贴公开视频链接，解析可访问的媒体资源，播放或下载，并按时间轴生成多模态证据报告。不同平台的可用性取决于其访问限制。",
-      sec_parse: "解析视频", sec_preview: "预览", sec_report: "AI 取证报告", sec_help: "使用指南",
+      sec_parse: "解析视频", sec_preview: "预览", sec_report: "分析与转写结果", sec_help: "使用指南",
       empty_head: "等待视频解析",
       empty_desc: "在左侧粘贴视频链接并点击「解析视频」，即可在此生成封面与在线播放",
       empty_s1: "粘贴链接", empty_s2: "解析视频", empty_s3: "AI 取证",
       help_t1: "粘贴链接", help_d1: "平台范围：抖音、B站、小红书、视频号。受来源平台访问限制影响，部分链接可能无法解析；视频号媒体解析通道仍在接入。",
       help_t2: "解析视频", help_d2: "封面、时长与视频信息一屏展示，无需手动选择来源",
       help_t3: "播放 / 下载", help_d3: "在线播放使用临时缓存；可下载平台提供的媒体流（B 站自动合并音视频）",
-      help_t4: "AI 取证分析", help_d4: "字幕 / 音频 / 画面逐段时间轴取证，支持多人转写输出分组稿",
-      help_notes: "生成的视频和报告将在约 48 小时后清理 · AI 分析前需先加载视频缓存",
+      help_t4: "转写 / AI 分析", help_d4: "可单独导出语音转写 TXT / SRT，或按时间轴分析字幕、音频和画面",
+      help_notes: "生成的视频、转写与报告将在约 48 小时后清理 · 处理时自动加载视频",
       modal_title: "登录工作台", modal_sub: "视频解析 · AI 分析 · 多模态取证",
       modal_user: "用户名", modal_pass: "密码", modal_btn: "登 录", modal_loading: "登录中…",
       modal_foot_pre: "没有账号？", modal_foot_link: "立即注册",
@@ -1178,7 +1178,8 @@ THEME_SCRIPT = """
       lang_btn: "EN",
       vp_in_url: "视频链接", vp_btn_parse: "解析视频", vp_dd_platform: "来源平台",
       vp_btn_clear: "清空", vp_btn_play: "在线播放", vp_btn_download: "下载视频",
-      vp_chk_speaker: "多人转写", vp_btn_extract: "AI 时间轴证据分析",
+      vp_chk_speaker: "多人转写（AI 分析）", vp_btn_extract: "AI 时间轴证据分析",
+      vp_btn_transcribe: "仅语音转写 · 导出 TXT / SRT",
       vp_out_status: "状态", vp_vid: "在线播放", vp_img_cover: "视频封面", vp_file: "下载文件"
     },
     en: {
@@ -1187,15 +1188,15 @@ THEME_SCRIPT = """
       hero_eyebrow: "Video Intelligence Platform",
       hero_title_a: "Parse · Download · ", hero_title_b: "AI Evidence",
       hero_sub: "Paste a public video link to parse an accessible media stream, play or download it, and generate a timeline evidence report. Availability depends on the source platform.",
-      sec_parse: "Parse Video", sec_preview: "Preview", sec_report: "AI Evidence Report", sec_help: "Guide",
+      sec_parse: "Parse Video", sec_preview: "Preview", sec_report: "Analysis & Transcript", sec_help: "Guide",
       empty_head: "Awaiting video",
       empty_desc: "Paste a link on the left and click Parse to generate cover and online playback here.",
       empty_s1: "Paste link", empty_s2: "Parse", empty_s3: "AI Evidence",
       help_t1: "Paste link", help_d1: "Platforms: Douyin, Bilibili, Xiaohongshu, and WeChat Channels. Some links may be blocked by source restrictions; WeChat Channels media extraction is not connected yet.",
       help_t2: "Parse", help_d2: "Cover, duration and video info shown on one screen, no manual source selection",
       help_t3: "Play / Download", help_d3: "Playback uses temporary cache; downloads use the source media stream (Bilibili audio and video are merged)",
-      help_t4: "AI Evidence", help_d4: "Timeline evidence from subtitles / audio / frames, with multi-speaker grouped transcripts",
-      help_notes: "Generated media and reports are removed after about 48 hours · Load the video before AI analysis",
+      help_t4: "Transcript / AI", help_d4: "Export a standalone TXT / SRT transcript or analyze subtitle, audio and frame evidence on a timeline",
+      help_notes: "Generated media, transcripts and reports are removed after about 48 hours · Video loads automatically",
       modal_title: "Sign in to workspace", modal_sub: "Video parsing · AI analysis · multimodal evidence",
       modal_user: "Username", modal_pass: "Password", modal_btn: "Sign in", modal_loading: "Signing in…",
       modal_foot_pre: "No account? ", modal_foot_link: "Sign up",
@@ -1205,7 +1206,8 @@ THEME_SCRIPT = """
       lang_btn: "中文",
       vp_in_url: "Video URL", vp_btn_parse: "Parse Video", vp_dd_platform: "Source Platform",
       vp_btn_clear: "Clear", vp_btn_play: "Play Online", vp_btn_download: "Download Video",
-      vp_chk_speaker: "Multi-speaker", vp_btn_extract: "AI Timeline Evidence",
+      vp_chk_speaker: "Multi-speaker (AI analysis)", vp_btn_extract: "AI Timeline Evidence",
+      vp_btn_transcribe: "Transcribe only · Export TXT / SRT",
       vp_out_status: "Status", vp_vid: "Online Playback", vp_img_cover: "Cover", vp_file: "Download File"
     }
   };
@@ -1213,7 +1215,7 @@ THEME_SCRIPT = """
   var VP_COMP_SEL = {
     vp_in_url: "label", vp_btn_parse: "button", vp_dd_platform: "label",
     vp_btn_clear: "button", vp_btn_play: "button", vp_btn_download: "button",
-    vp_chk_speaker: "label", vp_btn_extract: "button", vp_out_status: "label",
+    vp_chk_speaker: "label", vp_btn_extract: "button", vp_btn_transcribe: "button", vp_out_status: "label",
     vp_vid: "label", vp_img_cover: "label", vp_file: "label"
   };
   function vpCurLang() { return window.__vp_lang || 'zh'; }
@@ -1885,11 +1887,11 @@ def create_app():
                 </div>
                 <div class="vp-help-item">
                   <div class="vp-help-step">04</div>
-                  <div class="vp-help-title" data-i18n="help_t4">AI 取证分析</div>
-                  <div class="vp-help-desc" data-i18n="help_d4">字幕 / 音频 / 画面逐段时间轴取证，支持多人转写输出分组稿</div>
+                  <div class="vp-help-title" data-i18n="help_t4">转写 / AI 分析</div>
+                  <div class="vp-help-desc" data-i18n="help_d4">可单独导出语音转写 TXT / SRT，或按时间轴分析字幕、音频和画面</div>
                 </div>
               </div>
-              <div class="vp-help-notes" data-i18n="help_notes">生成的视频和报告将在约 48 小时后清理 · AI 分析前需先加载视频缓存</div>
+              <div class="vp-help-notes" data-i18n="help_notes">生成的视频、转写与报告将在约 48 小时后清理 · 处理时自动加载视频</div>
               <div class="vp-help-notes"><a href="/data-policy">使用与数据说明 / Data &amp; usage</a></div>
             </div>
             """
