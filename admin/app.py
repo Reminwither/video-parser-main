@@ -223,7 +223,7 @@ def get_stats():
 
 def get_usage_stats():
     """Seven-day aggregate usage from the main app; no link or user data is stored."""
-    data = {"ready": False, "parse": {}, "analysis": {}, "platforms": [], "days": [], "reasons": [], "success_rate": None}
+    data = {"ready": False, "parse": {}, "analysis": {}, "transcribe": {}, "platforms": [], "days": [], "reasons": [], "success_rate": None}
     try:
         c = ro_conn()
         rows = c.execute(
@@ -241,7 +241,7 @@ def get_usage_stats():
     days = {}
     reasons = {}
     for day, action, platform, outcome, reason, count, duration_total in rows:
-        if action not in ("parse", "analysis"):
+        if action not in ("parse", "analysis", "transcribe"):
             continue
         metric = data[action]
         metric[outcome] = metric.get(outcome, 0) + count
@@ -250,7 +250,7 @@ def get_usage_stats():
             metric["success_duration_ms"] = metric.get("success_duration_ms", 0) + duration_total
         if reason:
             reasons[(action, reason)] = reasons.get((action, reason), 0) + count
-        daily = days.setdefault(day, {"day": day, "parse": 0, "parse_success": 0, "analysis": 0, "analysis_success": 0})
+        daily = days.setdefault(day, {"day": day, "parse": 0, "parse_success": 0, "analysis": 0, "analysis_success": 0, "transcribe": 0, "transcribe_success": 0})
         daily[action] += count
         if outcome == "success":
             daily[action + "_success"] += count
@@ -263,7 +263,7 @@ def get_usage_stats():
     completed = data["parse"].get("success", 0) + data["parse"].get("failed", 0)
     if completed:
         data["success_rate"] = round(100 * data["parse"].get("success", 0) / completed, 1)
-    for action in ("parse", "analysis"):
+    for action in ("parse", "analysis", "transcribe"):
         m = data[action]
         n = m.get("success", 0)
         m["avg_success_seconds"] = round(m.get("success_duration_ms", 0) / n / 1000, 1) if n else None
@@ -273,9 +273,10 @@ def get_usage_stats():
         "upstream": "来源平台解析失败", "error": "服务执行异常",
         "missing_video": "未加载视频缓存", "disabled": "AI 功能未启用",
         "platform_mismatch": "平台选择与链接不一致",
+        "no_audio": "视频没有音轨", "asr_empty": "语音识别无结果",
     }
     data["reasons"] = [
-        {"action": "解析" if action == "parse" else "AI 分析", "reason": reason_labels.get(reason, reason), "count": count}
+        {"action": {"parse": "解析", "analysis": "AI 分析", "transcribe": "语音转写"}[action], "reason": reason_labels.get(reason, reason), "count": count}
         for (action, reason), count in sorted(reasons.items(), key=lambda item: item[1], reverse=True)
     ]
     return data

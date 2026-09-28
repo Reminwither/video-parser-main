@@ -86,6 +86,18 @@
       <div class="text-muted">报告平均完成耗时</div>
     </div></div>
   </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card card-sm"><div class="card-body">
+      <div class="font-weight-medium fs-2">{{ m.transcribe.get('success', 0) }}</div>
+      <div class="text-muted">近 7 天独立转写完成</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card card-sm"><div class="card-body">
+      <div class="font-weight-medium fs-2">{{ m.transcribe.get('avg_success_seconds') ~ ' 秒' if m.transcribe.get('avg_success_seconds') is not none else '—' }}</div>
+      <div class="text-muted">转写平均完成耗时</div>
+    </div></div>
+  </div>
 </div>
 
 <div class="row row-cards mt-2">
@@ -109,14 +121,14 @@
     <div class="card">
       <div class="card-header"><h3 class="card-title">结果分类 · 近 7 天</h3></div>
       <div class="table-responsive"><table class="table table-sm card-table">
-        <thead><tr><th>结果</th><th>解析</th><th>AI 分析</th></tr></thead>
+        <thead><tr><th>结果</th><th>解析</th><th>AI 分析</th><th>语音转写</th></tr></thead>
         <tbody>
-        <tr><td>成功</td><td>{{ m.parse.get('success', 0) }}</td><td>{{ m.analysis.get('success', 0) }}</td></tr>
-        <tr><td>执行失败</td><td>{{ m.parse.get('failed', 0) }}</td><td>{{ m.analysis.get('failed', 0) }}</td></tr>
-        <tr><td>平台未接入</td><td>{{ m.parse.get('unsupported', 0) }}</td><td>{{ m.analysis.get('unsupported', 0) }}</td></tr>
-        <tr><td>并发繁忙</td><td>{{ m.parse.get('busy', 0) }}</td><td>{{ m.analysis.get('busy', 0) }}</td></tr>
-        <tr><td>额度限制</td><td>{{ m.parse.get('quota', 0) }}</td><td>{{ m.analysis.get('quota', 0) }}</td></tr>
-        <tr><td>前置条件不足</td><td>{{ m.parse.get('invalid', 0) }}</td><td>{{ m.analysis.get('invalid', 0) }}</td></tr>
+        <tr><td>成功</td><td>{{ m.parse.get('success', 0) }}</td><td>{{ m.analysis.get('success', 0) }}</td><td>{{ m.transcribe.get('success', 0) }}</td></tr>
+        <tr><td>执行失败</td><td>{{ m.parse.get('failed', 0) }}</td><td>{{ m.analysis.get('failed', 0) }}</td><td>{{ m.transcribe.get('failed', 0) }}</td></tr>
+        <tr><td>平台未接入</td><td>{{ m.parse.get('unsupported', 0) }}</td><td>{{ m.analysis.get('unsupported', 0) }}</td><td>{{ m.transcribe.get('unsupported', 0) }}</td></tr>
+        <tr><td>并发繁忙</td><td>{{ m.parse.get('busy', 0) }}</td><td>{{ m.analysis.get('busy', 0) }}</td><td>{{ m.transcribe.get('busy', 0) }}</td></tr>
+        <tr><td>额度限制</td><td>{{ m.parse.get('quota', 0) }}</td><td>{{ m.analysis.get('quota', 0) }}</td><td>{{ m.transcribe.get('quota', 0) }}</td></tr>
+        <tr><td>前置条件不足</td><td>{{ m.parse.get('invalid', 0) }}</td><td>{{ m.analysis.get('invalid', 0) }}</td><td>{{ m.transcribe.get('invalid', 0) }}</td></tr>
         </tbody>
       </table></div>
     </div>
@@ -143,12 +155,12 @@
   <div class="col-12"><div class="card">
     <div class="card-header"><h3 class="card-title">每日趋势 · UTC</h3></div>
     <div class="table-responsive"><table class="table table-sm card-table">
-      <thead><tr><th>日期</th><th>解析请求</th><th>解析成功</th><th>AI 请求</th><th>完成报告</th></tr></thead>
+      <thead><tr><th>日期</th><th>解析请求</th><th>解析成功</th><th>AI 请求</th><th>完成报告</th><th>转写请求</th><th>转写成功</th></tr></thead>
       <tbody>
       {% for d in m.days %}
-      <tr><td>{{ d.day }}</td><td>{{ d.parse }}</td><td>{{ d.parse_success }}</td><td>{{ d.analysis }}</td><td>{{ d.analysis_success }}</td></tr>
+      <tr><td>{{ d.day }}</td><td>{{ d.parse }}</td><td>{{ d.parse_success }}</td><td>{{ d.analysis }}</td><td>{{ d.analysis_success }}</td><td>{{ d.transcribe }}</td><td>{{ d.transcribe_success }}</td></tr>
       {% else %}
-      <tr><td colspan="5" class="text-muted text-center">暂无每日数据</td></tr>
+      <tr><td colspan="7" class="text-muted text-center">暂无每日数据</td></tr>
       {% endfor %}
       </tbody>
     </table></div>

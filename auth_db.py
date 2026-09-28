@@ -220,10 +220,10 @@ def consume_daily_quota(subject: str, action: str, limit: int) -> bool:
 
 def record_usage(action: str, platform: str, outcome: str, reason: str = "", duration_ms: int = 0) -> None:
     """Store bounded aggregate metrics without URLs, video content, IPs or user IDs."""
-    allowed_actions = {"parse", "analysis"}
+    allowed_actions = {"parse", "analysis", "transcribe"}
     allowed_platforms = {"抖音", "哔哩哔哩", "小红书", "视频号"}
     allowed_outcomes = {"success", "failed", "unsupported", "busy", "quota", "invalid"}
-    allowed_reasons = {"", "upstream", "error", "missing_video", "disabled", "platform_mismatch"}
+    allowed_reasons = {"", "upstream", "error", "missing_video", "disabled", "platform_mismatch", "no_audio", "asr_empty"}
     if action not in allowed_actions or outcome not in allowed_outcomes:
         return
     platform = platform if platform in allowed_platforms else "其他"
