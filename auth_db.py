@@ -130,6 +130,13 @@ def init_db() -> None:
                 locked_until INTEGER NOT NULL DEFAULT 0,
                 window_start INTEGER NOT NULL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS daily_quota (
+                day TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                action TEXT NOT NULL,
+                count INTEGER NOT NULL,
+                PRIMARY KEY (day, subject, action)
+            );
             """
         )
         c.commit()
@@ -179,6 +186,10 @@ def create_user(username: str, password: str, is_admin: bool = False) -> int:
         raise AuthError("密码至少 8 位")
     with _DB_LOCK:
         c = _db()
+        if not is_admin:
+            max_users = max(1, int(os.getenv("MAX_REGISTERED_USERS", "200")))
+            if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] >= max_users:
+                raise AuthError("注册名额已满，请稍后再试")
         try:
             cur = c.execute(
                 "INSERT INTO users (username, password_hash, is_admin, is_active, created_at) "
@@ -189,6 +200,30 @@ def create_user(username: str, password: str, is_admin: bool = False) -> int:
         except sqlite3.IntegrityError:
             raise AuthError("用户名已存在")
         return cur.lastrowid
+
+
+def consume_daily_quota(subject: str, action: str, limit: int) -> bool:
+    """Atomically reserve one daily action; old counters are pruned on use."""
+    if limit <= 0:
+        return False
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    with _DB_LOCK:
+        c = _db()
+        c.execute("DELETE FROM daily_quota WHERE day < date(?, '-8 days')", (day,))
+        row = c.execute(
+            "SELECT count FROM daily_quota WHERE day = ? AND subject = ? AND action = ?",
+            (day, subject, action),
+        ).fetchone()
+        if row and row["count"] >= limit:
+            c.commit()
+            return False
+        c.execute(
+            "INSERT INTO daily_quota(day, subject, action, count) VALUES (?, ?, ?, 1) "
+            "ON CONFLICT(day, subject, action) DO UPDATE SET count = count + 1",
+            (day, subject, action),
+        )
+        c.commit()
+        return True
 
 
 def get_user_by_username(username: str):

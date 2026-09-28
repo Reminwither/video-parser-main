@@ -171,8 +171,11 @@ vim .env  # 编辑配置
 | `TEXT_REGION_CHANGE_THRESHOLD` | 字幕/屏幕文字区域变化候选阈值 | `0.10` |
 | `VISION_BATCH_SIZE` | 每批视觉观察帧数 | `6` |
 | `ALLOW_REGISTER` | 是否开放自助注册 | `0` |
+| `MAX_REGISTERED_USERS` / `REGISTER_PER_IP_DAILY` | 注册总人数 / 单 IP 每日注册上限 | `200` / `3` |
+| `DAILY_PARSE_LIMIT` / `DAILY_PLAY_LIMIT` / `DAILY_DOWNLOAD_LIMIT` / `DAILY_ANALYSIS_LIMIT` | 单账号每日操作次数上限（UTC 日） | `30` / `10` / `10` / `2` |
+| `MAX_CONCURRENT_PARSE` / `MAX_CONCURRENT_TRANSFER` / `MAX_CONCURRENT_ANALYSIS` | 全站同时运行的任务数 | `3` / `2` / `1` |
 | `SESSION_COOKIE_SECURE` | HTTPS 代理下启用安全 Cookie | `0`（HTTPS 部署设为 `1`） |
-| `MAX_VIDEO_DOWNLOAD_MB` | 单个服务端缓存视频上限 | `500` |
+| `MAX_VIDEO_DOWNLOAD_MB` | 单个服务端缓存视频上限 | `200` |
 | `VIDEO_RETENTION_DAYS` | 自动清理缓存视频天数；`0` 禁用 | `0` |
 | `ASR_MODEL_ID` | 可选的 OpenAI 兼容语音转写模型 | 未配置（诚实降级） |
 | `ASR_BACKEND` | `openai` 或本地 `faster-whisper` | `openai` |
@@ -180,6 +183,8 @@ vim .env  # 编辑配置
 | `ASR_CHUNK_SECONDS` | 无句级时间戳时的音频分块对齐长度 | `0`（不分块） |
 
 > API 密钥获取地址：https://modelscope.cn/my/myaccesstoken
+
+公网部署时将 `ALLOW_REGISTER=1` 写入服务器的 `.env`，并设置 `MAX_VIDEO_DOWNLOAD_MB=200`。每日限额按 UTC 日期重置；注册受总人数及单 IP 上限约束。视频、封面和分析报告默认不会自行删除，腾讯云服务器需安装 `ops/cleanup-media.sh` 与同目录下的 systemd service/timer，每日清理超过 48 小时的生成文件。此定时任务只清理生成目录，不删除账号数据库。
 
 #### 5. 访问应用
 

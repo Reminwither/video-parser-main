@@ -8,17 +8,16 @@ import os
 import time
 import hashlib
 import secrets
+import shutil
 from typing import Optional
 from contextlib import asynccontextmanager
-from urllib.parse import urljoin
 
-import requests
 from requests.exceptions import RequestException, ConnectionError
 from fastapi import FastAPI, Request, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from configs.logging_config import logger
 from configs.general_constants import (
@@ -27,7 +26,7 @@ from configs.general_constants import (
 )
 from utils.web_fetcher import WebFetcher, UrlParser
 from utils.vigenere_cipher import VigenereCipher
-from utils.url_safety import assert_public_http_url
+from utils.url_safety import open_public_stream
 from src.downloader_factory import DownloaderFactory
 
 
@@ -35,13 +34,13 @@ from src.downloader_factory import DownloaderFactory
 
 class ParseRequest(BaseModel):
     """解析请求模型"""
-    text: str
+    text: str = Field(max_length=8192)
 
 
 class DownloadRequest(BaseModel):
     """下载请求模型"""
-    video_url: str
-    video_id: str
+    video_url: str = Field(max_length=8192)
+    video_id: str = Field(max_length=256)
 
 
 class APIResponse(BaseModel):
@@ -143,34 +142,18 @@ def _prune_expired_videos() -> int:
 
 def _download_public_video(url: str, destination: str, max_bytes: int) -> None:
     """Download with redirect validation, a byte cap, and atomic file replacement."""
-    session = requests.Session()
-    current_url = url
+    if shutil.disk_usage(os.path.dirname(destination)).free < max_bytes + 1024 * 1024 * 1024:
+        raise OSError("服务器存储空间不足")
     response = None
     try:
-        for _ in range(6):
-            assert_public_http_url(current_url)
-            response = session.get(
-                current_url,
+        response = open_public_stream(
+                url,
                 headers={
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/123.0 Safari/537.36",
-                    "Referer": "https://www.pearvideo.com/" if "pearvideo.com" in current_url else "",
+                    "Referer": "https://www.pearvideo.com/" if "pearvideo.com" in url else "",
                 },
-                stream=True,
                 timeout=(10, 30),
-                allow_redirects=False,
             )
-            if response.is_redirect or response.is_permanent_redirect:
-                next_url = response.headers.get("Location")
-                response.close()
-                response = None
-                if not next_url:
-                    raise requests.RequestException("Redirect response did not include a Location")
-                current_url = urljoin(current_url, next_url)
-                continue
-            response.raise_for_status()
-            break
-        else:
-            raise requests.RequestException("Too many redirects")
 
         content_length = response.headers.get("Content-Length")
         if content_length and int(content_length) > max_bytes:
@@ -195,7 +178,6 @@ def _download_public_video(url: str, destination: str, max_bytes: int) -> None:
     finally:
         if response is not None:
             response.close()
-        session.close()
 
 
 # ==================== 应用生命周期 ====================
@@ -353,6 +335,9 @@ async def register_submit(request: Request):
 
     if password != password2:
         return fail("两次输入的密码不一致")
+    ip = get_client_ip(request.scope)
+    if not auth_db.consume_daily_quota(f"ip:{ip}", "register", max(1, int(os.getenv("REGISTER_PER_IP_DAILY", "3")))):
+        return fail("今日注册次数已达上限，请明天再试")
     try:
         user_id = auth_db.create_user(username, password)
     except auth_db.AuthError as e:
@@ -360,7 +345,7 @@ async def register_submit(request: Request):
 
     logger.info(f"注册成功: {username}")
     token = auth_db.create_session(
-        user_id, ip=get_client_ip(request.scope),
+        user_id, ip=ip,
         user_agent=request.headers.get("user-agent", ""),
     )
     resp = RedirectResponse(next_url, status_code=303)

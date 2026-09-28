@@ -13,6 +13,7 @@
 """
 
 import ipaddress
+import os
 from urllib.parse import quote
 
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -58,6 +59,8 @@ def _requires_login_json(path: str) -> bool:
         return False
     if path.startswith("/api/"):
         return True
+    if path.startswith("/static/videos/") or path.startswith("/gradio_api/file=") or path.startswith("/file="):
+        return True
     return False
 
 
@@ -78,6 +81,20 @@ class SessionAuthMiddleware:
         session = auth_db.get_session_user(token) if token else None
 
         if session:
+            action = {"/api/parse": ("parse", 30), "/api/download": ("download", 10)}.get(path)
+            if scope.get("type") == "http" and scope.get("method") == "POST" and action:
+                name, default_limit = action
+                limit = max(0, int(os.getenv(f"DAILY_{name.upper()}_LIMIT", str(default_limit))))
+                if not auth_db.consume_daily_quota(f"user:{session['id']}", name, limit):
+                    await send({
+                        "type": "http.response.start", "status": 429,
+                        "headers": [(b"content-type", b"application/json; charset=utf-8")],
+                    })
+                    await send({
+                        "type": "http.response.body",
+                        "body": b'{"retcode":429,"retdesc":"Daily quota exceeded","succ":false}',
+                    })
+                    return
             # 会话有效：把用户信息挂到 scope 供路由/ Gradio fn 读取
             scope = dict(scope)
             scope["state"] = dict(scope.get("state") or {})

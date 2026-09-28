@@ -1,12 +1,13 @@
 import re
 import json
 import random
-import requests
+from urllib.parse import urlencode
 from bs4 import BeautifulSoup
 from utils.web_fetcher import UrlParser
 from src.downloaders.base_downloader import BaseDownloader
 from configs.general_constants import USER_AGENT_PC
 from configs.logging_config import logger
+from utils.url_safety import fetch_public_response
 
 
 class LishipinDownloader(BaseDownloader):
@@ -27,12 +28,12 @@ class LishipinDownloader(BaseDownloader):
             "contId": f"{''.join(filter(str.isdigit, self.video_id))}",
             "mrd": random.random()
         }
-        response = requests.get(jsp_url, params=params, headers=self.headers)
-        if response.status_code == 200:
+        response = fetch_public_response(jsp_url + "?" + urlencode(params), headers=self.headers,
+                                         timeout=(5, 15), max_bytes=2 * 1024 * 1024)
+        try:
             return response.json()
-        else:
-            logger.warning(f"请求失败，状态码: {response.status_code}")
-            return None
+        finally:
+            response.close()
 
     def get_real_video_url(self):
         try:

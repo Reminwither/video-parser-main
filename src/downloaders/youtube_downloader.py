@@ -29,7 +29,6 @@ class YoutubeDownloader(BaseDownloader):
             "retries": 3,
             "extractor_retries": 5,
             "source_address": "0.0.0.0",
-            "nocheckcertificate": True,
         }
         try:
             with yt_dlp.YoutubeDL(options) as ydl:

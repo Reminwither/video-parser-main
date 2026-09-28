@@ -7,6 +7,9 @@
 import os
 import html
 import base64
+import hashlib
+import shutil
+import secrets
 import time
 import random
 import string
@@ -237,11 +240,15 @@ class VideoClient:
             response = fetch_public_response(cover_url, headers=headers, timeout=30, max_bytes=8 * 1024 * 1024)
             response.raise_for_status()
 
-            with open(cache_path, 'wb') as f:
+            temporary_path = cache_path + f".{secrets.token_hex(6)}.part"
+            with open(temporary_path, 'wb') as f:
                 f.write(response.content)
-
+            os.replace(temporary_path, cache_path)
+            response.close()
             return cache_path
         except Exception as e:
+            if 'temporary_path' in locals() and os.path.exists(temporary_path):
+                os.remove(temporary_path)
             print(f"下载封面失败: {e}")
             return None
 
@@ -405,32 +412,57 @@ class VideoClient:
 # 全局客户端实例
 client = VideoClient()
 
-# 存储当前解析的视频信息
-current_video_info = {}
+
+def _video_cache_key(video_info: dict) -> str:
+    if video_info.get("_cache_key"):
+        return video_info["_cache_key"]
+    identity = "|".join(str(video_info.get(key, "")) for key in ("platform", "video_id", "original_url"))
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
 
 
-def parse_video(url: str, platform: str, request: gr.Request = None) -> Tuple[str, str, str, str, str]:
+_PARSE_SLOTS = threading.BoundedSemaphore(max(1, int(os.getenv("MAX_CONCURRENT_PARSE", "3"))))
+_TRANSFER_SLOTS = threading.BoundedSemaphore(max(1, int(os.getenv("MAX_CONCURRENT_TRANSFER", "2"))))
+_ANALYSIS_SLOTS = threading.BoundedSemaphore(max(1, int(os.getenv("MAX_CONCURRENT_ANALYSIS", "1"))))
+
+
+def _allow_user_action(user: dict, action: str, default_limit: int) -> bool:
+    limit = max(0, int(os.getenv(f"DAILY_{action.upper()}_LIMIT", str(default_limit))))
+    return auth_db.consume_daily_quota(f"user:{user['id']}", action, limit)
+
+
+def _media_disk_available() -> bool:
+    return shutil.disk_usage(client.cache_dir).free >= 2 * 1024 * 1024 * 1024
+
+
+def parse_video(url: str, platform: str, request: gr.Request = None) -> tuple:
     """
     解析视频
 
     Returns:
-        (status_message, info_bar_html, cover_update, video_url, guide_html)
+        (status_message, info_bar_html, cover_update, video_url, guide_html, session_video_info)
     """
-    if not _vp_session_from_request(request):
-        return "🔒 请先登录后再使用此功能 / Please sign in first", _info_bar_html("请先登录 / Please sign in", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML
-    import asyncio
-    status, info, cover, video_url, guide = asyncio.run(_async_parse_video(url, platform))
+    user = _vp_session_from_request(request)
+    if not user:
+        return "🔒 请先登录后再使用此功能 / Please sign in first", _info_bar_html("请先登录 / Please sign in", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
+    if not _PARSE_SLOTS.acquire(blocking=False):
+        return "当前解析任务较多，请稍后重试", _info_bar_html("当前解析任务较多", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
+    try:
+        if not _allow_user_action(user, "parse", 30):
+            return "今日解析次数已用完，请明天再试", _info_bar_html("今日解析次数已用完", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
+        import asyncio
+        status, info, cover, video_url, guide, video_info = asyncio.run(_async_parse_video(url, platform))
+    finally:
+        _PARSE_SLOTS.release()
     if cover:
         cover_out = gr.update(visible=True, value=cover)
     else:
         cover_out = gr.update(visible=False)
-    return status, info, cover_out, video_url, guide
+    return status, info, cover_out, video_url, guide, video_info
 
-async def _async_parse_video(url: str, platform: str) -> Tuple[str, str, str, str, str]:
-    global current_video_info
+async def _async_parse_video(url: str, platform: str) -> tuple:
 
     if not url or not url.strip():
-        return "请输入视频链接", _info_bar_html("请输入视频链接", "", ok=False), None, "", EMPTY_GUIDE_HTML
+        return "请输入视频链接", _info_bar_html("请输入视频链接", "", ok=False), None, "", EMPTY_GUIDE_HTML, {}
 
     url = url.strip()
 
@@ -444,8 +476,9 @@ async def _async_parse_video(url: str, platform: str) -> Tuple[str, str, str, st
     success, data, message = await client.parse_video(url)
 
     if success:
-        current_video_info = data
-        current_video_info['original_url'] = url
+        video_info = dict(data)
+        video_info['original_url'] = url
+        video_info['_cache_key'] = secrets.token_hex(16)
 
         title = data.get('title', '无标题')
         cover_url = data.get('cover_url', '')
@@ -469,41 +502,50 @@ async def _async_parse_video(url: str, platform: str) -> Tuple[str, str, str, st
         # 下载封面到本地（避免 Gradio 直接访问外部 URL 失败）
         cover_local_path = None
         if cover_url:
-            cover_local_path = client.download_cover(cover_url, video_id, referer)
+            cover_local_path = client.download_cover(cover_url, _video_cache_key(video_info), referer)
 
         status = f"解析成功 - {platform_name}"
-        return status, _info_bar_html(title, platform_name, ok=True), cover_local_path, video_url, ""
+        return status, _info_bar_html(title, platform_name, ok=True), cover_local_path, video_url, "", video_info
     else:
-        current_video_info = {}
-        return f"解析失败: {message}", _info_bar_html("解析失败：" + message, "", ok=False), None, "", EMPTY_GUIDE_HTML
+        return f"解析失败: {message}", _info_bar_html("解析失败：" + message, "", ok=False), None, "", EMPTY_GUIDE_HTML, {}
 
 
-def play_video(progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str]:
+def play_video(video_info: dict, progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str]:
     """
     播放视频（先下载到本地缓存再播放）
 
     Returns:
         (video_update, status_message)
     """
-    if not _vp_session_from_request(request):
+    user = _vp_session_from_request(request)
+    if not user:
         return gr.update(visible=False), "🔒 请先登录后再使用此功能 / Please sign in first"
-    import asyncio
-    video_path, status = asyncio.run(_async_play_video(progress))
+    if not video_info:
+        return gr.update(visible=False), "请先解析视频"
+    if not _media_disk_available():
+        return gr.update(visible=False), "服务器存储空间不足，请稍后重试"
+    if not _TRANSFER_SLOTS.acquire(blocking=False):
+        return gr.update(visible=False), "当前下载任务较多，请稍后重试"
+    try:
+        if not _allow_user_action(user, "play", 10):
+            return gr.update(visible=False), "今日播放加载次数已用完，请明天再试"
+        import asyncio
+        video_path, status = asyncio.run(_async_play_video(progress, video_info))
+    finally:
+        _TRANSFER_SLOTS.release()
     if video_path:
         return gr.update(visible=True, value=video_path), status
     return gr.update(visible=False), status
 
-async def _async_play_video(progress) -> Tuple[str, str]:
-    global current_video_info
-
-    if not current_video_info:
+async def _async_play_video(progress, video_info: dict) -> Tuple[str, str]:
+    if not video_info:
         return None, "请先解析视频"
 
-    video_url = current_video_info.get('video_url', '')
-    audio_url = current_video_info.get('audio_url', '')
-    video_id = current_video_info.get('video_id', 'video')
-    platform = current_video_info.get('platform', '')
-    original_url = current_video_info.get('original_url', '')
+    video_url = video_info.get('video_url', '')
+    audio_url = video_info.get('audio_url', '')
+    video_id = video_info.get('video_id', 'video')
+    platform = video_info.get('platform', '')
+    original_url = video_info.get('original_url', '')
 
     # 获取视频下载地址
     download_url = await client.get_download_url(video_url, video_id, original_url)
@@ -527,8 +569,8 @@ async def _async_play_video(progress) -> Tuple[str, str]:
         referer = 'https://haokan.baidu.com/'
 
     # 生成缓存文件名
-    safe_id = "".join(c for c in video_id if c.isalnum())[:30] or "video"
-    cache_path = os.path.join(client.cache_dir, f"{safe_id}_play.mp4")
+    cache_key = _video_cache_key(video_info)
+    cache_path = os.path.join(client.cache_dir, f"{cache_key}_play.mp4")
 
     # 如果已经缓存过，直接返回
     if os.path.exists(cache_path):
@@ -542,8 +584,10 @@ async def _async_play_video(progress) -> Tuple[str, str]:
 
     # B站视频需要分别下载音视频再合并
     if platform == '哔哩哔哩' and audio_url:
-        video_temp = os.path.join(client.cache_dir, f"{safe_id}_video.m4s")
-        audio_temp = os.path.join(client.cache_dir, f"{safe_id}_audio.m4s")
+        nonce = secrets.token_hex(6)
+        video_temp = os.path.join(client.cache_dir, f"{cache_key}_{nonce}_video.m4s")
+        audio_temp = os.path.join(client.cache_dir, f"{cache_key}_{nonce}_audio.m4s")
+        merged_temp = os.path.join(client.cache_dir, f"{cache_key}_{nonce}_merged.mp4")
 
         response = None
         try:
@@ -587,9 +631,10 @@ async def _async_play_video(progress) -> Tuple[str, str]:
             # 合并音视频
             response.close()
             progress(0.8, desc="合并音视频...")
-            success, msg = client.merge_video_audio(video_temp, audio_temp, cache_path)
+            success, msg = client.merge_video_audio(video_temp, audio_temp, merged_temp)
 
             if success:
+                os.replace(merged_temp, cache_path)
                 progress(1.0, desc="加载完成")
                 return cache_path, "加载完成"
             else:
@@ -599,7 +644,7 @@ async def _async_play_video(progress) -> Tuple[str, str]:
             if response is not None:
                 response.close()
             # 清理临时文件
-            for temp_file in [video_temp, audio_temp, cache_path]:
+            for temp_file in [video_temp, audio_temp, merged_temp]:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
             return None, f"加载失败: {str(e)}"
@@ -607,6 +652,7 @@ async def _async_play_video(progress) -> Tuple[str, str]:
     else:
         # 其他平台直接下载视频
         response = None
+        temporary_path = cache_path + f".{secrets.token_hex(6)}.part"
         try:
             progress(0, desc="正在加载视频...")
             response = open_public_stream(video_url, headers=headers, timeout=180)
@@ -616,7 +662,7 @@ async def _async_play_video(progress) -> Tuple[str, str]:
                 raise ValueError("视频超过单文件下载上限，请调整 MAX_VIDEO_DOWNLOAD_MB")
             downloaded_size = 0
 
-            with open(cache_path, 'wb') as f:
+            with open(temporary_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
                         f.write(chunk)
@@ -627,44 +673,55 @@ async def _async_play_video(progress) -> Tuple[str, str]:
                             progress(downloaded_size / total_size, desc=f"加载中: {downloaded_size * 100 // total_size}%")
 
             response.close()
+            os.replace(temporary_path, cache_path)
             progress(1.0, desc="加载完成")
             return cache_path, "加载完成"
 
         except Exception as e:
             if response is not None:
                 response.close()
-            if os.path.exists(cache_path):
-                os.remove(cache_path)
+            if os.path.exists(temporary_path):
+                os.remove(temporary_path)
             return None, f"加载失败: {str(e)}"
 
 
-def download_video(progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str]:
+def download_video(video_info: dict, progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str]:
     """
     下载视频
 
     Returns:
         (file_update, status_message)
     """
-    if not _vp_session_from_request(request):
+    user = _vp_session_from_request(request)
+    if not user:
         return gr.update(visible=False), "🔒 请先登录后再使用此功能 / Please sign in first"
-    import asyncio
-    filepath, status = asyncio.run(_async_download_video(progress))
+    if not video_info:
+        return gr.update(visible=False), "请先解析视频"
+    if not _media_disk_available():
+        return gr.update(visible=False), "服务器存储空间不足，请稍后重试"
+    if not _TRANSFER_SLOTS.acquire(blocking=False):
+        return gr.update(visible=False), "当前下载任务较多，请稍后重试"
+    try:
+        if not _allow_user_action(user, "download", 10):
+            return gr.update(visible=False), "今日下载次数已用完，请明天再试"
+        import asyncio
+        filepath, status = asyncio.run(_async_download_video(progress, video_info))
+    finally:
+        _TRANSFER_SLOTS.release()
     if filepath:
         return gr.update(visible=True, value=filepath), status
     return gr.update(visible=False), status
 
-async def _async_download_video(progress) -> Tuple[str, str]:
-    global current_video_info
-
-    if not current_video_info:
+async def _async_download_video(progress, video_info: dict) -> Tuple[str, str]:
+    if not video_info:
         return None, "请先解析视频"
 
-    video_url = current_video_info.get('video_url', '')
-    audio_url = current_video_info.get('audio_url', '')
-    video_id = current_video_info.get('video_id', 'video')
-    title = current_video_info.get('title', 'video')
-    platform = current_video_info.get('platform', '')
-    original_url = current_video_info.get('original_url', '')
+    video_url = video_info.get('video_url', '')
+    audio_url = video_info.get('audio_url', '')
+    video_id = video_info.get('video_id', 'video')
+    title = video_info.get('title', 'video')
+    platform = video_info.get('platform', '')
+    original_url = video_info.get('original_url', '')
 
     # 获取视频下载地址
     download_url = await client.get_download_url(video_url, video_id, original_url)
@@ -678,7 +735,8 @@ async def _async_download_video(progress) -> Tuple[str, str]:
     safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_', '.')).strip()
     if not safe_title:
         safe_title = video_id
-    safe_title = safe_title[:50]
+    safe_title = safe_title[:35]
+    unique_name = f"{safe_title}_{secrets.token_hex(6)}"
 
     # 获取 referer
     referer = None
@@ -695,15 +753,15 @@ async def _async_download_video(progress) -> Tuple[str, str]:
     if platform == '哔哩哔哩' and audio_url:
         progress(0, desc="下载视频轨道...")
 
-        video_temp = os.path.join(client.download_dir, f"{safe_title}_video.m4s")
-        audio_temp = os.path.join(client.download_dir, f"{safe_title}_audio.m4s")
-        output_path = os.path.join(client.download_dir, f"{safe_title}.mp4")
+        video_temp = os.path.join(client.download_dir, f"{unique_name}_video.m4s")
+        audio_temp = os.path.join(client.download_dir, f"{unique_name}_audio.m4s")
+        output_path = os.path.join(client.download_dir, f"{unique_name}.mp4")
 
         # 下载视频轨道
         def video_progress(p):
             progress(p * 0.4, desc=f"下载视频轨道: {p*100:.0f}%")
 
-        success, _, msg = client.download_file(video_url, f"{safe_title}_video.m4s",
+        success, _, msg = client.download_file(video_url, f"{unique_name}_video.m4s",
                                                 referer, video_progress)
         if not success:
             return None, f"视频轨道下载失败: {msg}"
@@ -714,7 +772,7 @@ async def _async_download_video(progress) -> Tuple[str, str]:
         def audio_progress(p):
             progress(0.4 + p * 0.4, desc=f"下载音频轨道: {p*100:.0f}%")
 
-        success, _, msg = client.download_file(audio_url, f"{safe_title}_audio.m4s",
+        success, _, msg = client.download_file(audio_url, f"{unique_name}_audio.m4s",
                                                 referer, audio_progress)
         if not success:
             return None, f"音频轨道下载失败: {msg}"
@@ -734,7 +792,7 @@ async def _async_download_video(progress) -> Tuple[str, str]:
         def download_progress(p):
             progress(p, desc=f"下载中: {p*100:.0f}%")
 
-        filename = f"{safe_title}.mp4"
+        filename = f"{unique_name}.mp4"
         success, filepath, msg = client.download_file(video_url, filename,
                                                        referer, download_progress)
 
@@ -744,30 +802,36 @@ async def _async_download_video(progress) -> Tuple[str, str]:
             return None, msg
 
 
-def extract_video_content(multi_speaker: bool = False, progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str, object]:
+def extract_video_content(multi_speaker: bool = False, video_info: dict | None = None, progress=gr.Progress(), request: gr.Request = None) -> Tuple[str, str, object]:
     """
     按时间轴建立多模态证据后生成视频分析。
 
     Returns:
         (content_text, status_message)
     """
-    if not _vp_session_from_request(request):
+    user = _vp_session_from_request(request)
+    if not user:
         return "🔒 请先登录后再使用此功能 / Please sign in first", "🔒 请先登录后再使用此功能 / Please sign in first", gr.update(value=None, visible=False)
-    global current_video_info
-
-    if not current_video_info:
+    if not video_info:
         return REPORT_PLACEHOLDER, "请先解析视频", gr.update(value=None, visible=False)
 
-    video_id = current_video_info.get('video_id', 'video')
+    video_id = video_info.get('video_id', 'video')
 
     # 检查是否有缓存的视频文件
-    safe_id = "".join(c for c in video_id if c.isalnum())[:30] or "video"
-    cache_path = os.path.join(client.cache_dir, f"{safe_id}_play.mp4")
+    safe_id = "".join(c for c in str(video_id) if c.isalnum())[:30] or "video"
+    cache_path = os.path.join(client.cache_dir, f"{_video_cache_key(video_info)}_play.mp4")
 
     if not os.path.exists(cache_path):
         return REPORT_PLACEHOLDER, "请先点击「在线播放」加载视频后再提取内容", gr.update(value=None, visible=False)
 
+    if not QWEN_API_KEY:
+        return REPORT_PLACEHOLDER, "AI 分析尚未配置，请联系管理员", gr.update(value=None, visible=False)
+    if not _ANALYSIS_SLOTS.acquire(blocking=False):
+        return REPORT_PLACEHOLDER, "当前有分析任务正在运行，请稍后重试", gr.update(value=None, visible=False)
+
     try:
+        if not _allow_user_action(user, "analysis", 2):
+            return REPORT_PLACEHOLDER, "今日 AI 分析次数已用完，请明天再试", gr.update(value=None, visible=False)
         qwen_client = OpenAI(
             base_url=QWEN_API_BASE_URL,
             api_key=QWEN_API_KEY,
@@ -782,8 +846,8 @@ def extract_video_content(multi_speaker: bool = False, progress=gr.Progress(), r
             cache_path,
             qwen_client,
             QWEN_MODEL_ID,
-            title=current_video_info.get('title'),
-            video_info=current_video_info,
+            title=video_info.get('title'),
+            video_info=video_info,
             max_frames=MAX_ANALYSIS_FRAMES,
             progress=report_progress,
             diarize=bool(multi_speaker),
@@ -796,7 +860,7 @@ def extract_video_content(multi_speaker: bool = False, progress=gr.Progress(), r
         reports_dir = os.path.join(client.download_dir, "reports")
         os.makedirs(reports_dir, exist_ok=True)
         safe_id = "".join(c for c in str(video_id) if c.isalnum())[:30] or "video"
-        report_path = os.path.join(reports_dir, f"{safe_id}_{int(time.time())}.md")
+        report_path = os.path.join(reports_dir, f"{safe_id}_{int(time.time())}_{secrets.token_hex(6)}.md")
         with open(report_path, "w", encoding="utf-8", newline="\n") as report_file:
             report_file.write(result)
         return result, status, gr.update(value=report_path, visible=True)
@@ -805,6 +869,8 @@ def extract_video_content(multi_speaker: bool = False, progress=gr.Progress(), r
         import traceback
         traceback.print_exc()
         return "", f"提取失败: {str(e)}", gr.update(value=None, visible=False)
+    finally:
+        _ANALYSIS_SLOTS.release()
 
 
 # 信息条初始占位（空状态引导）
@@ -1172,11 +1238,9 @@ def speaker_backend_status() -> Tuple[bool, str]:
 
 def clear_all():
     """清空所有内容"""
-    global current_video_info
-    current_video_info = {}
     return ("", "自动检测", "", INFO_BAR_EMPTY,
             gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
-            REPORT_PLACEHOLDER, gr.update(value=None, visible=False), EMPTY_GUIDE_HTML)
+            REPORT_PLACEHOLDER, gr.update(value=None, visible=False), EMPTY_GUIDE_HTML, {})
 
 
 # ==================== Gradio 界面 ====================
@@ -1478,8 +1542,9 @@ def create_app():
                 elem_id="vp_report_download",
             )
 
-        # 隐藏的视频 URL 存储
+        # 解析结果保存在每个 Gradio 会话内，避免不同用户覆盖彼此的视频。
         video_url_state = gr.State("")
+        video_info_state = gr.State({})
 
         # 示例链接按钮事件绑定
         douyin_btn.click(
@@ -1513,27 +1578,27 @@ def create_app():
             fn=parse_video,
             js=GATE_JS,
             inputs=[url_input, platform_dropdown],
-            outputs=[status_output, title_bar, cover_output, video_url_state, guide_html]
+            outputs=[status_output, title_bar, cover_output, video_url_state, guide_html, video_info_state]
         )
 
         play_btn.click(
             fn=play_video,
             js=_gate_js("play"),
-            inputs=[],
+            inputs=[video_info_state],
             outputs=[video_output, status_output]
         )
 
         download_btn.click(
             fn=download_video,
             js=_gate_js("download"),
-            inputs=[],
+            inputs=[video_info_state],
             outputs=[download_output, status_output]
         )
 
         extract_btn.click(
             fn=extract_video_content,
             js=_gate_js("extract"),
-            inputs=[multi_speaker_chk],
+            inputs=[multi_speaker_chk, video_info_state],
             outputs=[content_output, status_output, report_file_output]
         )
 
@@ -1542,7 +1607,7 @@ def create_app():
             inputs=[],
             outputs=[url_input, platform_dropdown, status_output, title_bar,
                     cover_output, video_output, download_output, content_output,
-                    report_file_output, guide_html]
+                    report_file_output, guide_html, video_info_state]
         )
 
         # 使用指南（双列横向卡，打破同构小卡网格）

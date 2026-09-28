@@ -1,0 +1,6 @@
+[Unit]
+Description=Remove expired video parser media
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/video-parser-cleanup

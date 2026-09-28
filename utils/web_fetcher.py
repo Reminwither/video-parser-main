@@ -4,7 +4,7 @@ import random
 from urllib.parse import urlparse, parse_qs, urljoin
 from configs.logging_config import logger
 from configs.general_constants import USER_AGENT_PC, DOMAIN_TO_NAME
-from utils.url_safety import assert_public_http_url
+from utils.url_safety import assert_public_http_url, open_public_once
 
 
 class WebFetcher:
@@ -29,7 +29,7 @@ class WebFetcher:
                 if not any(host == root or host.endswith("." + root) for root in supported_roots):
                     return None
                 # 发送请求，禁止重定向
-                resp = requests.get(current_url, headers=WebFetcher.headers, allow_redirects=False, timeout=5)
+                resp = open_public_once(current_url, headers=WebFetcher.headers, timeout=5)
                 try:
                     resp.raise_for_status()
                     redirect_url = resp.headers.get("location")

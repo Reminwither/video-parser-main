@@ -1,17 +1,14 @@
 import json
 import os
 import time
-import urllib3
-import warnings
 import copy
 import requests
+from urllib.parse import urlencode
+from utils.url_safety import fetch_public_response
 from utils.web_fetcher import UrlParser
 from utils.douyin_utils.bogus_sign_utils import CommonUtils
 from configs.logging_config import logger
 from src.downloaders.base_downloader import BaseDownloader
-
-warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)
-
 
 class DouyinDownloader(BaseDownloader):
     def __init__(self, real_url):
@@ -72,7 +69,7 @@ class DouyinDownloader(BaseDownloader):
             try:
                 abogus = self.common_utils.get_abogus(play_url, self.common_utils.user_agent)
                 url = f"{play_url}&a_bogus={abogus}"
-                response = requests.get(url, headers=new_headers, verify=False, timeout=(5, 15))
+                response = fetch_public_response(url, headers=new_headers, timeout=(5, 15), max_bytes=5 * 1024 * 1024)
                 response.raise_for_status()
                 content_type = response.headers.get("content-type", "")
                 if not response.text.strip():
@@ -107,11 +104,11 @@ class DouyinDownloader(BaseDownloader):
         last_error = None
         for endpoint in endpoints:
             try:
-                response = requests.get(
-                    endpoint,
-                    params={'aweme_id': self.aweme_id},
+                response = fetch_public_response(
+                    endpoint + '?' + urlencode({'aweme_id': self.aweme_id}),
                     headers={'Authorization': f'Bearer {api_key}'},
                     timeout=(5, 20),
+                    max_bytes=5 * 1024 * 1024,
                 )
                 response.raise_for_status()
                 payload = response.json()

@@ -1,0 +1,10 @@
+[Unit]
+Description=Clean expired video parser media daily
+
+[Timer]
+OnCalendar=*-*-* 04:20:00
+Persistent=true
+RandomizedDelaySec=20min
+
+[Install]
+WantedBy=timers.target

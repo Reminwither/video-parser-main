@@ -1,6 +1,6 @@
 import json
 import random
-import requests
+from utils.url_safety import open_public_once
 from utils.web_fetcher import UrlParser
 from src.downloaders.base_downloader import BaseDownloader
 from configs.general_constants import USER_AGENT_PC
@@ -25,14 +25,20 @@ class PipigaoxiaoDownloader(BaseDownloader):
             'pid': int(self.video_pid),
             'type': "post"
         }
-        response = requests.post(jsp_url, json=params, headers=self.headers)
-        # 检查响应状态码
-        if response.status_code == 200:
-            # 解析JSON响应
-            return response.json()
-        else:
-            logger.warning(f"请求失败，状态码: {response.status_code}")
-            return None
+        response = open_public_once(jsp_url, headers=self.headers, timeout=(5, 15),
+                                    method="POST", body=json.dumps(params).encode("utf-8"))
+        try:
+            if response.status_code != 200:
+                logger.warning(f"请求失败，状态码: {response.status_code}")
+                return None
+            data = bytearray()
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                data.extend(chunk)
+                if len(data) > 2 * 1024 * 1024:
+                    raise ValueError("平台响应过大")
+            return json.loads(data)
+        finally:
+            response.close()
 
     def get_real_video_url(self):
         try:

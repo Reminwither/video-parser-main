@@ -79,7 +79,6 @@ jobs:
               -e APP_USER=admin \
               -e APP_PASS \
               -e REQUIRE_AUTH=1 \
-              -e ALLOW_REGISTER=0 \
               -e SESSION_COOKIE_SECURE=1 \
               -v /opt/video-parser/static/videos:/app/static/videos \
               -v /opt/video-parser/static/images:/app/static/images \

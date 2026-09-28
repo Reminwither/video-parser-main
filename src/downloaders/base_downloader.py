@@ -1,12 +1,9 @@
 import os
 import uuid
-import requests
-from requests.adapters import HTTPAdapter
-from requests.exceptions import RequestException, ChunkedEncodingError
 from bs4 import BeautifulSoup
-from urllib3.util.retry import Retry
 from configs.general_constants import SAVE_VIDEO_PATH, SAVE_IMAGE_PATH
 from configs.logging_config import logger
+from utils.url_safety import fetch_public_response, open_public_stream
 
 
 class BaseDownloader:
@@ -26,13 +23,13 @@ class BaseDownloader:
 
     def fetch_html_content(self):
         try:
-            resp = requests.get(self.real_url, headers=self.headers, timeout=5)
-            resp.raise_for_status()
-            return resp.text
-        except requests.RequestException as e:
-            logger.error(f"Failed to get the page: {e}")
+            resp = fetch_public_response(self.real_url, headers=self.headers, timeout=(5, 15), max_bytes=5 * 1024 * 1024)
+            try:
+                return resp.text
+            finally:
+                resp.close()
         except Exception as e:
-            logger.error(f"An error occurred: {e}")
+            logger.error(f"Failed to get the page: {e}")
 
     @staticmethod
     def parse_html_data(html_content, pattern):
@@ -57,27 +54,34 @@ class BaseDownloader:
 
     def download_and_save(self, folder, url, file_extension):
         BaseDownloader.mkdir(folder)
-        retries = Retry(total=5, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
-        session = requests.Session()
-        session.mount('http://', HTTPAdapter(max_retries=retries))
-        session.mount('https://', HTTPAdapter(max_retries=retries))
+        limit_mb = max(1, int(os.getenv("MAX_VIDEO_DOWNLOAD_MB", "500"))) if file_extension == "mp4" else 8
+        max_bytes = limit_mb * 1024 * 1024
+        full_name = os.path.abspath(os.path.join(folder, f'{uuid.uuid4()}.{file_extension}'))
+        temporary_path = full_name + ".part"
+        response = None
         try:
-            response = session.get(url, headers=self.headers, stream=True)
-            response.raise_for_status()
-        except RequestException as e:
-            logger.error(f"Failed to download the resource: {e}")
-        _filename = os.path.join(folder, f'{str(uuid.uuid4())}.{file_extension}')
-        full_name = os.path.abspath(_filename)
-        try:
-            with open(full_name, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
+            response = open_public_stream(url, headers=self.headers, timeout=(10, 30))
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > max_bytes:
+                raise ValueError("文件超过下载大小限制")
+            written = 0
+            with open(temporary_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=64 * 1024):
                     if chunk:
+                        written += len(chunk)
+                        if written > max_bytes:
+                            raise ValueError("文件超过下载大小限制")
                         f.write(chunk)
-        except ChunkedEncodingError as e:
-            logger.error(f"Failed to save the resource: {e}")
-        except IOError as e:
-            logger.error(f"Failed to save the resource: {e}")
-        return full_name
+            os.replace(temporary_path, full_name)
+            return full_name
+        except Exception as e:
+            logger.error(f"Failed to download the resource: {e}")
+            return None
+        finally:
+            if response is not None:
+                response.close()
+            if os.path.exists(temporary_path):
+                os.remove(temporary_path)
 
     def download_and_save_video(self):
         video_url = self.get_real_video_url()
