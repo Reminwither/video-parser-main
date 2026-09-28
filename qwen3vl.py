@@ -19,11 +19,11 @@ load_dotenv()
 # API 配置（从环境变量读取）
 API_BASE_URL = os.getenv('QWEN_API_BASE_URL', 'https://api-inference.modelscope.cn/v1')
 API_KEY = os.getenv('QWEN_API_KEY', '')
-MODEL_ID = os.getenv('QWEN_MODEL_ID', 'Qwen/Qwen3-VL-8B-Instruct')
+MODEL_ID = os.getenv('QWEN_MODEL_ID', 'Qwen/Qwen3.5-27B')
 
 # 强制检查：如果 MODEL_ID 看起来像一个 URL，则重置为默认值
 if MODEL_ID.startswith('http'):
-    MODEL_ID = 'Qwen/Qwen3-VL-8B-Instruct'
+    MODEL_ID = 'Qwen/Qwen3.5-27B'
 
 # 帧提取配置
 MAX_ANALYSIS_FRAMES = int(os.getenv('MAX_ANALYSIS_FRAMES', '24'))

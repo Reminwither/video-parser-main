@@ -15,7 +15,7 @@ ENV TZ=Asia/Shanghai
 
 # Qwen API 默认配置（可通过 .env 文件或 docker-compose 覆盖）
 ENV QWEN_API_BASE_URL=https://api-inference.modelscope.cn/v1
-ENV QWEN_MODEL_ID=Qwen/Qwen3-VL-8B-Instruct
+ENV QWEN_MODEL_ID=Qwen/Qwen3.5-27B
 ENV MAX_ANALYSIS_FRAMES=24
 ENV FRAME_INTERVAL_SECONDS=2.0
 ENV SCENE_CHANGE_THRESHOLD=0.32

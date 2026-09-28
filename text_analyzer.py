@@ -13,7 +13,7 @@ load_dotenv()
 
 QWEN_API_BASE_URL = os.getenv('QWEN_API_BASE_URL', 'https://api-inference.modelscope.cn/v1')
 QWEN_API_KEY = os.getenv('QWEN_API_KEY', '')
-QWEN_MODEL_ID = os.getenv('QWEN_MODEL_ID', 'Qwen/Qwen3-VL-8B-Instruct')
+QWEN_MODEL_ID = os.getenv('QWEN_MODEL_ID', 'Qwen/Qwen3.5-27B')
 
 # 纯文本分析可使用更快的模型，若配置了 TEXT_MODEL_ID 则优先使用
 TEXT_MODEL_ID = os.getenv('TEXT_MODEL_ID', '') or QWEN_MODEL_ID

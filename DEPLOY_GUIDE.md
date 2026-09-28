@@ -60,7 +60,7 @@ cp .env.example .env
 ```bash
 export QWEN_API_KEY="ms-xxxxxxxx"
 export QWEN_API_BASE_URL="https://api-inference.modelscope.cn/v1"
-export QWEN_MODEL_ID="Qwen/Qwen3-VL-8B-Instruct"
+export QWEN_MODEL_ID="Qwen/Qwen3.5-27B"
 export MAX_ANALYSIS_FRAMES=24
 export FRAME_INTERVAL_SECONDS=2.0
 export SCENE_CHANGE_THRESHOLD=0.32
@@ -75,7 +75,7 @@ docker run -d --name video-parser -p 127.0.0.1:7860:7860 \
   -e QWEN_API_KEY="ms-xxxxxxxx" \
   -e REQUIRE_AUTH=1 -e ALLOW_REGISTER=0 -e SESSION_COOKIE_SECURE=1 \
   -v $(pwd)/data:/app/data \
-  -e QWEN_MODEL_ID="Qwen/Qwen3-VL-8B-Instruct" \
+  -e QWEN_MODEL_ID="Qwen/Qwen3.5-27B" \
   video-parser:latest
 ```
 
@@ -84,7 +84,7 @@ docker run -d --name video-parser -p 127.0.0.1:7860:7860 \
 |--------|------|--------|------|
 | `QWEN_API_KEY` | ModelScope API 密钥（获取：https://modelscope.cn/my/myaccesstoken） | 无 | **是**（AI 功能） |
 | `QWEN_API_BASE_URL` | Qwen API 基础地址 | `https://api-inference.modelscope.cn/v1` | 否 |
-| `QWEN_MODEL_ID` | 模型 ID | `Qwen/Qwen3-VL-8B-Instruct` | 否 |
+| `QWEN_MODEL_ID` | 模型 ID | `Qwen/Qwen3.5-27B` | 否 |
 | `MAX_ANALYSIS_FRAMES` | 时间轴画面采样上限 | `24` | 否 |
 | `FRAME_INTERVAL_SECONDS` | 连续采样基础间隔（秒） | `2.0` | 否 |
 | `SCENE_CHANGE_THRESHOLD` | 场景变化阈值 | `0.32` | 否 |

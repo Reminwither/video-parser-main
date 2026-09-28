@@ -58,10 +58,10 @@ docker run -d \
 创建 `.env` 文件并配置以下变量：
 
 ```bash
-# Qwen3-VL API 配置
+# Qwen API 配置
 QWEN_API_BASE_URL=https://api-inference.modelscope.cn/v1
 QWEN_API_KEY=your-modelscope-api-key-here
-QWEN_MODEL_ID=Qwen/Qwen3-VL-8B-Instruct
+QWEN_MODEL_ID=Qwen/Qwen3.5-27B
 MAX_ANALYSIS_FRAMES=24
 FRAME_INTERVAL_SECONDS=2.0
 SCENE_CHANGE_THRESHOLD=0.32

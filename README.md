@@ -164,7 +164,7 @@ vim .env  # 编辑配置
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
 | `QWEN_API_BASE_URL` | API 基础地址 | `https://api-inference.modelscope.cn/v1` |
-| `QWEN_MODEL_ID` | 模型 ID | `Qwen/Qwen3-VL-8B-Instruct` |
+| `QWEN_MODEL_ID` | 模型 ID | `Qwen/Qwen3.5-27B` |
 | `MAX_ANALYSIS_FRAMES` | 时间轴画面采样上限 | `24` |
 | `FRAME_INTERVAL_SECONDS` | 连续采样基础间隔（秒） | `2.0` |
 | `SCENE_CHANGE_THRESHOLD` | 场景变化检测阈值 | `0.32` |
@@ -271,7 +271,7 @@ vim .env
 |--------|------|--------|
 | `QWEN_API_BASE_URL` | Qwen API 基础地址 | `https://api-inference.modelscope.cn/v1` |
 | `QWEN_API_KEY` | ModelScope API 密钥 | 无（必填） |
-| `QWEN_MODEL_ID` | 模型 ID | `Qwen/Qwen3-VL-8B-Instruct` |
+| `QWEN_MODEL_ID` | 模型 ID | `Qwen/Qwen3.5-27B` |
 | `MAX_ANALYSIS_FRAMES` | 时间轴画面采样上限 | `24` |
 | `FRAME_INTERVAL_SECONDS` | 连续采样基础间隔（秒） | `2.0` |
 | `ASR_MODEL_ID` | 可选语音转写模型；未配置时不生成口播稿 | 无 |

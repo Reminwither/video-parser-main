@@ -183,13 +183,13 @@ def detect_platform(url: str) -> str:
 # 优先从环境变量读取，避免被其他不相关的环境变量（如 API_SERVER_URL）干扰
 QWEN_API_BASE_URL = os.getenv('QWEN_API_BASE_URL', 'https://api-inference.modelscope.cn/v1')
 QWEN_API_KEY = os.getenv('QWEN_API_KEY', '')
-QWEN_MODEL_ID = os.getenv('QWEN_MODEL_ID', 'Qwen/Qwen3-VL-8B-Instruct')
+QWEN_MODEL_ID = os.getenv('QWEN_MODEL_ID', 'Qwen/Qwen3.5-27B')
 AI_ANALYSIS_ENABLED = bool(QWEN_API_KEY) and os.getenv('AI_ANALYSIS_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
 
 # 强制检查：如果 QWEN_MODEL_ID 看起来像一个 URL（通常是因为环境变量冲突），则重置为默认值
 if QWEN_MODEL_ID.startswith('http'):
     print(f"警告: 检测到异常的模型 ID: {QWEN_MODEL_ID}，正在重置为默认值")
-    QWEN_MODEL_ID = 'Qwen/Qwen3-VL-8B-Instruct'
+    QWEN_MODEL_ID = 'Qwen/Qwen3.5-27B'
 
 MAX_ANALYSIS_FRAMES = int(os.getenv('MAX_ANALYSIS_FRAMES', '24'))
 
