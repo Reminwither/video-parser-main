@@ -157,6 +157,7 @@ vim .env  # 编辑配置
 | 变量名 | 说明 | 示例 |
 |--------|------|------|
 | `QWEN_API_KEY` | ModelScope API 密钥 | `ms-xxxxxxxx` |
+| `AI_ANALYSIS_ENABLED` | 模型账号未就绪时设为 `0`，禁用 AI 按钮 | `1`（有密钥时） |
 
 **可选配置：**
 

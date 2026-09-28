@@ -184,6 +184,7 @@ def detect_platform(url: str) -> str:
 QWEN_API_BASE_URL = os.getenv('QWEN_API_BASE_URL', 'https://api-inference.modelscope.cn/v1')
 QWEN_API_KEY = os.getenv('QWEN_API_KEY', '')
 QWEN_MODEL_ID = os.getenv('QWEN_MODEL_ID', 'Qwen/Qwen3-VL-8B-Instruct')
+AI_ANALYSIS_ENABLED = bool(QWEN_API_KEY) and os.getenv('AI_ANALYSIS_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
 
 # 强制检查：如果 QWEN_MODEL_ID 看起来像一个 URL（通常是因为环境变量冲突），则重置为默认值
 if QWEN_MODEL_ID.startswith('http'):
@@ -811,6 +812,8 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
         return "🔒 请先登录后再使用此功能 / Please sign in first", "🔒 请先登录后再使用此功能 / Please sign in first", gr.update(value=None, visible=False)
     if not video_info:
         return REPORT_PLACEHOLDER, "请先解析视频", gr.update(value=None, visible=False)
+    if not AI_ANALYSIS_ENABLED:
+        return REPORT_PLACEHOLDER, "AI 分析暂未启用：模型服务账号尚未完成配置", gr.update(value=None, visible=False)
 
     video_id = video_info.get('video_id', 'video')
 
@@ -821,8 +824,6 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
     if not os.path.exists(cache_path):
         return REPORT_PLACEHOLDER, "请先点击「在线播放」加载视频后再提取内容", gr.update(value=None, visible=False)
 
-    if not QWEN_API_KEY:
-        return REPORT_PLACEHOLDER, "AI 分析尚未配置，请联系管理员", gr.update(value=None, visible=False)
     if not _ANALYSIS_SLOTS.acquire(blocking=False):
         return REPORT_PLACEHOLDER, "当前有分析任务正在运行，请稍后重试", gr.update(value=None, visible=False)
 
@@ -1478,7 +1479,10 @@ def create_app():
                         elem_id="vp_chk_speaker",
                         elem_classes=["vp-toggle"],
                     )
-                    extract_btn = gr.Button("AI 时间轴证据分析", variant="primary", elem_classes=["vp-extract"], elem_id="vp_btn_extract")
+                    extract_btn = gr.Button("AI 时间轴证据分析", variant="primary", interactive=AI_ANALYSIS_ENABLED,
+                                            elem_classes=["vp-extract"], elem_id="vp_btn_extract")
+                gr.Markdown("AI 分析暂未启用：模型服务账号尚未完成绑定。视频解析与下载可正常使用。",
+                            visible=not AI_ANALYSIS_ENABLED)
 
                 # 状态反馈（信息流底部）
                 status_output = gr.Textbox(
