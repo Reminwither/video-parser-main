@@ -43,11 +43,8 @@ jobs:
           port: 22
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 20m
-          envs: APP_PASS
-          # 通过环境变量传入密码，避免把密码拼进远程 shell 脚本。
           script: |
             set -e
-            test -n "$APP_PASS" || { echo "APP_PASS secret is required"; exit 1; }
             DOMAIN_VALUE=$(sed -n 's/^DOMAIN=//p' /opt/video-parser/.env | tail -n 1)
             DOMAIN_HOST=${DOMAIN_VALUE#https://}
             DOMAIN_HOST=${DOMAIN_HOST#http://}
@@ -72,7 +69,6 @@ jobs:
                 -p 127.0.0.1:7860:7860 \
                 --env-file /opt/video-parser/.env \
                 -e APP_USER=admin \
-                -e APP_PASS \
                 -e REQUIRE_AUTH=1 \
                 -e SESSION_COOKIE_SECURE=1 \
                 -v /opt/video-parser/static/videos:/app/static/videos \
@@ -131,5 +127,3 @@ jobs:
             curl -fsS "https://$DOMAIN_HOST/health" >/dev/null || rollback
             docker tag video-parser:candidate video-parser:latest
             echo "==> DEPLOY DONE $(date)"
-        env:
-          APP_PASS: ${{ secrets.APP_PASS }}

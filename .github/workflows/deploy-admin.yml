@@ -45,10 +45,9 @@ jobs:
           port: 22
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 20m
-          envs: APP_PASS
           script: |
             set -e
-            test -n "$APP_PASS" || { echo "APP_PASS secret is required"; exit 1; }
+            test -s /opt/video-parser/.env.admin || { echo "Admin runtime environment is missing"; exit 1; }
             curl -fsS http://127.0.0.1:7861/health >/dev/null || { echo "Running admin is unhealthy; refusing to replace it"; exit 1; }
             echo "==> [1/4] 导入提交到 /opt/video-parser-admin"
             mkdir -p /opt/video-parser-admin
@@ -75,11 +74,11 @@ jobs:
               --name video-parser-admin \
               --restart unless-stopped \
               -p 127.0.0.1:7861:7861 \
+              --env-file /opt/video-parser/.env.admin \
               -e AUTH_DB_PATH=/opt/video-parser/data/auth.db \
               -e ASSETS_DIR=/opt/video-parser/downloads \
               -e LOGS_DIR=/opt/video-parser/logs \
               -e SESSION_COOKIE_SECURE=1 \
-              -e ADMIN_SECRET="$(printf '%s' "$APP_PASS" | sha256sum | cut -d' ' -f1)" \
               -v /opt/video-parser:/opt/video-parser:ro \
               video-parser-admin:latest
 
@@ -94,5 +93,3 @@ jobs:
               sleep 5
             done
             echo "==> ADMIN DEPLOY DONE $(date)"
-        env:
-          APP_PASS: ${{ secrets.APP_PASS }}
