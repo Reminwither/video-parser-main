@@ -1760,40 +1760,87 @@ def render_structured_analysis(payload: dict, bundle: EvidenceBundle) -> str:
 
 
 def _build_evidence_windows(bundle: EvidenceBundle, count: int = 8) -> list[dict]:
-    cues = bundle.subtitles or bundle.transcript
-    if not cues:
+    """Group timed speech, subtitles, and visual observations without dropping modalities."""
+    cues = [*bundle.subtitles, *bundle.transcript]
+    duration = max(
+        bundle.media.duration,
+        max((cue.end for cue in cues), default=0.0),
+    )
+    visual_items: list[tuple[float, str]] = []
+    for line in (bundle.visual_observations or "").splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 5 or not re.fullmatch(r"\d{1,2}:\d{2}(?:\.\d+)?", cells[0]):
+            continue
+        timestamp = _seconds(cells[0], duration)
+        visual_items.append((timestamp, (
+            f"画面事实：{cells[1]}；画面可见文字：{cells[2]}；"
+            f"场景类型：{cells[3]}；视觉置信度：{cells[4]}"
+        )))
+    if visual_items:
+        duration = max(duration, max(timestamp for timestamp, _ in visual_items))
+    if duration <= 0:
         return []
-    duration = max(bundle.media.duration, cues[-1].end)
     window_seconds = max(30.0, duration / count)
     windows = []
     cursor = 0.0
     while cursor < duration:
         selected = [cue for cue in cues if cursor <= cue.start < cursor + window_seconds]
-        if selected:
+        selected_visual = [
+            (timestamp, text)
+            for timestamp, text in visual_items
+            if cursor <= timestamp < cursor + window_seconds
+        ]
+        if selected or selected_visual:
+            evidence_lines = [
+                f"[{cue.source}][{format_timestamp(cue.start)}] {cue.text}"
+                for cue in selected
+            ]
+            evidence_lines.extend(
+                f"[画面][{format_timestamp(timestamp)}] {text}"
+                for timestamp, text in selected_visual
+            )
+            source_types = set()
+            if any(cue.source.startswith("subtitle") for cue in selected):
+                source_types.add("字幕")
+            if any(not cue.source.startswith("subtitle") for cue in selected):
+                source_types.add("ASR")
+            if selected_visual:
+                source_types.add("画面")
             windows.append({
-                "start": selected[0].start,
-                "end": selected[-1].end,
-                "source": " ".join(cue.text for cue in selected),
+                "start": min(
+                    [cue.start for cue in selected]
+                    + [timestamp for timestamp, _ in selected_visual]
+                ),
+                "end": max(
+                    [cue.end for cue in selected]
+                    + [timestamp for timestamp, _ in selected_visual]
+                ),
+                "source": "\n".join(evidence_lines),
+                "source_type": "+".join(sorted(source_types)),
             })
         cursor += window_seconds
     return windows
 
 
 def _summarize_evidence_window(client: OpenAI, model: str, window: dict) -> dict:
-    prompt = f"""只分析下面这一小段视频 ASR，不使用外部知识。不要展开 FDE 等缩写。
+    prompt = f"""只分析下面这一小段视频证据，不使用外部知识。不要展开 FDE 等缩写。
 返回 JSON：
 {{
   "title":"本段标题",
   "summary":"本段内容概括",
   "themes":["主题"],
-  "core_points":[{{"text":"忠实观点", "evidence":"ASR中连续出现的原句"}}],
-  "key_cases":[{{"text":"本段明确讲到的具体案例", "evidence":"ASR中连续出现的原句"}}],
-  "author_conclusion":[{{"text":"作者明确结论", "evidence":"ASR中连续出现的原句"}}]
+  "core_points":[{{"text":"忠实观点", "evidence":"来源中逐字出现的证据"}}],
+  "key_cases":[{{"text":"本段明确讲到的具体案例", "evidence":"来源中逐字出现的证据"}}],
+  "author_conclusion":[{{"text":"作者明确结论", "evidence":"来源中逐字出现的证据"}}]
 }}
-普通说明不是案例；没有案例或结论就返回空数组。evidence 必须能在 ASR 中逐字找到，不能概括或改写。
+证据来源可能是 ASR、字幕或画面观察/OCR。不要把画面文字说成口播原话；视觉描述只支持画面事实。普通说明不是案例；没有案例或结论就返回空数组。evidence 必须是证据内容中逐字出现的连续片段，不能概括或改写。
 
 时间：{format_timestamp(window['start'])}–{format_timestamp(window['end'])}
-ASR：{window['source']}
+来源类型：{window.get('source_type', '未知')}
+证据：
+{window['source']}
 
 现在只返回上述 JSON。
 """
@@ -1826,12 +1873,75 @@ ASR：{window['source']}
         }
 
 
+def _summarize_visual_evidence_windows(
+    client: OpenAI, model: str, windows: Sequence[dict]
+) -> list[dict]:
+    """Summarize all visual-only windows in one call to keep the fallback fast."""
+    evidence = [
+        {
+            "start": window["start"],
+            "end": window["end"],
+            "evidence": window["source"],
+        }
+        for window in windows
+    ]
+    prompt = f"""只依据下面按时间顺序排列的画面事实和 OCR 文字整理视频内容，不使用标题推断正文，不使用外部知识。
+这些材料来自抽样画面而非完整口播。不得把画面文字写成作者口播原话，不得仅凭插画推断现实事件、人物身份或因果。
+只返回 JSON：{{"segments":[{{"title":"本段标题","summary":"基于可见证据的谨慎概括","themes":["主题"],"core_points":[{{"text":"画面能直接支持的内容","evidence":"输入中逐字出现的连续证据"}}],"key_cases":[],"author_conclusion":[]}}]}}。
+每个输入时间窗对应一个输出段，按相同顺序返回；evidence 必须是输入证据中的逐字连续片段。无法确认就留空，不要编造口播、案例或作者结论。
+
+时间窗画面证据：
+{json.dumps(evidence, ensure_ascii=False)}
+"""
+    cached = _load_model_text_cache("visual_segment_summary_v1", model, prompt)
+    if cached is None:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                stream=False,
+                max_tokens=_env_int("VISUAL_SEGMENT_SUMMARY_MAX_TOKENS", 2400),
+            )
+            cached = response.choices[0].message.content.strip()
+            _save_model_text_cache("visual_segment_summary_v1", model, prompt, cached)
+        except Exception:
+            cached = ""
+    try:
+        payload = _json_object_from_model(cached)
+        summaries = payload.get("segments")
+        if not isinstance(summaries, list):
+            summaries = []
+    except (ValueError, TypeError, json.JSONDecodeError):
+        summaries = []
+
+    result = []
+    for index, window in enumerate(windows):
+        summary = summaries[index] if index < len(summaries) and isinstance(summaries[index], dict) else {}
+        result.append({
+            "title": str(summary.get("title") or "画面证据"),
+            "summary": str(summary.get("summary") or window["source"][:240]),
+            "themes": _as_list(summary.get("themes")),
+            "core_points": _as_list(summary.get("core_points")),
+            "key_cases": _as_list(summary.get("key_cases")),
+            "author_conclusion": _as_list(summary.get("author_conclusion")),
+        })
+    return result
+
+
 def summarize_evidence_windows(client: OpenAI, model: str, bundle: EvidenceBundle) -> list[dict]:
+    windows = _build_evidence_windows(bundle)
+    if not windows:
+        return []
+    if not bundle.subtitles and not bundle.transcript:
+        summaries = _summarize_visual_evidence_windows(client, model, windows)
+    else:
+        summaries = [_summarize_evidence_window(client, model, window) for window in windows]
     segments = []
-    for window in _build_evidence_windows(bundle):
-        summary = _summarize_evidence_window(client, model, window)
+    for window, summary in zip(windows, summaries):
         summary["start"] = window["start"]
         summary["end"] = window["end"]
+        summary["source_type"] = window.get("source_type", "未知")
         summary["_source"] = window["source"]
         segments.append(summary)
     return segments
@@ -1847,22 +1957,21 @@ def build_audience_report_prompt(
     title = str(info.get("title") or "未获取")
     platform_evidence = normalize_platform_evidence(info)
     signal_context = compact_signal_context(platform_evidence)
-    # The raw `_source` transcript is intentionally excluded here. Content
-    # segments already contain grounded evidence, while repeating the whole
-    # transcript can make small local models echo the input instead of obeying
-    # the requested distillation schema.
+    # The raw evidence is intentionally excluded here. Content segments already
+    # contain grounded evidence, while repeating the full transcript/OCR can
+    # make models echo inputs instead of following the requested schema.
     distilled_segments = []
     for segment in segments:
         distilled_segments.append({
             key: value for key, value in segment.items()
             if key in {
                 "start", "end", "title", "summary", "themes",
-                "core_points", "key_cases", "author_conclusion",
+                "core_points", "key_cases", "author_conclusion", "source_type",
             }
         })
     return f"""你在为“视频爆款研究库”生成稳定的结构化数据。
 根据标题元数据、确定性互动信号和已经按顺序整理的内容段落，分析内容机制与传播假设。
-标题只能用于分析包装方式，不能当作正文证据；不得使用外部知识，不得展开缩写。
+标题只能用于分析包装方式，不能当作正文证据；段落若仅来自画面观察/OCR，只能描述画面可见事实，不得假装是口播或作者原话。不得使用外部知识，不得展开缩写。
 传播原因只能写成假设，每条都要给具体证据和置信度。互动比值只是信号，不代表因果。
 禁止把收藏/点赞比叫“收藏率”，禁止只说“内容好、有共鸣”。只返回 JSON：
 严格控制总输出在1800个汉字以内：传播假设最多3条、可复用基因最多4条、不可复制因素最多3条，单个字段尽量一句话。
@@ -1925,6 +2034,32 @@ def generate_audience_report_payload(
         url=str((video_info or {}).get("share_url") or ""),
         duration_seconds=bundle.media.duration,
     )
+    if not segments:
+        bundle.warnings.append("未提取到字幕、ASR 或可用画面证据，已停止生成推测性内容总结")
+        return {
+            "schema_version": "video-analysis.v3",
+            "source": platform_evidence.get("source") or {},
+            "performance": platform_evidence.get("performance") or {},
+            "distribution_signals": platform_evidence.get("distribution_signals") or [],
+            "content": {
+                "one_sentence_summary": "未提取到可用的字幕、语音或画面证据，暂时无法可靠总结视频内容。",
+                "topic": "暂无法判断",
+                "themes": [],
+                "target_audience": "暂无法判断",
+                "viewer_value": "暂无法判断",
+                "content_structure": [],
+                "core_points": [],
+                "key_cases": [],
+                "author_conclusion": [],
+            },
+            "mechanics": {},
+            "viral_hypotheses": [],
+            "transfer": {},
+            "data_gaps": list(platform_evidence.get("data_gaps") or []) + [
+                "没有可用字幕、ASR 或画面证据；标题未用于推断正文。"
+            ],
+            "source_quotes": [],
+        }
     prompt = build_audience_report_prompt(segments, custom_focus, video_info)
     overview: dict = {}
     try:
@@ -2068,6 +2203,8 @@ mechanics 必须非空；viral_hypotheses 必须有1-3条且含 hypothesis/evide
     }
     data_gaps = list(platform_evidence.get("data_gaps") or [])
     data_gaps.extend(str(item) for item in _as_list(overview.get("limitations")) if item)
+    if not bundle.subtitles and not bundle.transcript:
+        data_gaps.append("当前没有可用字幕或 ASR；正文分析仅依据抽样画面与 OCR，不能代表完整口播。")
     return {
         "schema_version": "video-analysis.v3",
         "source": platform_evidence.get("source") or {},
