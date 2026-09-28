@@ -859,16 +859,32 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
     safe_id = "".join(c for c in str(video_id) if c.isalnum())[:30] or "video"
     cache_path = os.path.join(client.cache_dir, f"{_video_cache_key(video_info)}_play.mp4")
 
-    if not os.path.exists(cache_path):
-        auth_db.record_usage("analysis", metric_platform, "invalid", "missing_video")
-        return REPORT_PLACEHOLDER, "请先点击「在线播放」加载视频后再提取内容", gr.update(value=None, visible=False)
-
     if not _ANALYSIS_SLOTS.acquire(blocking=False):
         auth_db.record_usage("analysis", metric_platform, "busy")
         return REPORT_PLACEHOLDER, "当前有分析任务正在运行，请稍后重试", gr.update(value=None, visible=False)
 
     started = time.monotonic()
     try:
+        if not os.path.exists(cache_path):
+            if not _media_disk_available():
+                auth_db.record_usage("analysis", metric_platform, "failed", "error")
+                return REPORT_PLACEHOLDER, "服务器存储空间不足，请稍后重试", gr.update(value=None, visible=False)
+            if not _TRANSFER_SLOTS.acquire(blocking=False):
+                auth_db.record_usage("analysis", metric_platform, "busy")
+                return REPORT_PLACEHOLDER, "当前视频加载任务较多，请稍后重试", gr.update(value=None, visible=False)
+            try:
+                if not _allow_user_action(user, "play", 10):
+                    auth_db.record_usage("analysis", metric_platform, "quota")
+                    return REPORT_PLACEHOLDER, "今日视频加载次数已用完，请明天再试", gr.update(value=None, visible=False)
+                import asyncio
+                loaded_path, load_status = asyncio.run(_async_play_video(progress, video_info))
+            finally:
+                _TRANSFER_SLOTS.release()
+            if not loaded_path:
+                auth_db.record_usage("analysis", metric_platform, "failed", "upstream", int((time.monotonic() - started) * 1000))
+                return REPORT_PLACEHOLDER, f"视频加载失败：{load_status}", gr.update(value=None, visible=False)
+            cache_path = loaded_path
+
         if not _allow_user_action(user, "analysis", 2):
             auth_db.record_usage("analysis", metric_platform, "quota")
             return REPORT_PLACEHOLDER, "今日 AI 分析次数已用完，请明天再试", gr.update(value=None, visible=False)
@@ -933,7 +949,7 @@ REPORT_PLACEHOLDER = """
     </svg>
   </div>
   <div class="vp-report-empty-head">分析报告将在这里生成</div>
-  <div class="vp-report-empty-sub">先点击「在线播放」加载视频缓存，再点击「AI 时间轴证据分析」开始取证</div>
+  <div class="vp-report-empty-sub">先解析视频，再点击「AI 时间轴证据分析」；所需视频会自动加载</div>
 </div>
 """
 
