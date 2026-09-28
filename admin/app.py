@@ -22,9 +22,11 @@ import hmac
 import time
 import secrets
 import mimetypes
+import threading
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import unquote
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from flask import (
     Flask, request, redirect, url_for,
@@ -48,13 +50,55 @@ app = Flask(
     static_folder=os.path.join(BASE, "static"),
     static_url_path="/static",
 )
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.secret_key = os.getenv("ADMIN_SECRET", secrets.token_urlsafe(32))
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE", "0").strip().lower() in {"1", "true", "yes", "on"},
-    SESSION_COOKIE_PATH="/",
+    SESSION_COOKIE_PATH="/admin",
 )
+
+_LOGIN_LOCK = threading.Lock()
+_LOGIN_ATTEMPTS: dict[str, list[float]] = {}
+
+
+def _login_limited(username: str, ip: str) -> bool:
+    now = time.monotonic()
+    with _LOGIN_LOCK:
+        for key, window, limit in ((f"user:{username.lower()}", 900, 5), (f"ip:{ip}", 300, 10)):
+            attempts = [when for when in _LOGIN_ATTEMPTS.get(key, []) if now - when < window]
+            if attempts:
+                _LOGIN_ATTEMPTS[key] = attempts
+            else:
+                _LOGIN_ATTEMPTS.pop(key, None)
+            if len(attempts) >= limit:
+                return True
+    return False
+
+
+def _record_login_failure(username: str, ip: str) -> None:
+    now = time.monotonic()
+    with _LOGIN_LOCK:
+        if len(_LOGIN_ATTEMPTS) > 10000:
+            _LOGIN_ATTEMPTS.clear()
+        for key in (f"user:{username.lower()}", f"ip:{ip}"):
+            _LOGIN_ATTEMPTS.setdefault(key, []).append(now)
+
+
+def _clear_login_failures(username: str, ip: str) -> None:
+    with _LOGIN_LOCK:
+        _LOGIN_ATTEMPTS.pop(f"user:{username.lower()}", None)
+        _LOGIN_ATTEMPTS.pop(f"ip:{ip}", None)
+
+
+@app.after_request
+def protect_admin_response(response):
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 # ===================== 数据访问（只读） =====================
@@ -259,10 +303,15 @@ def login():
     if request.method == "POST":
         u = request.form.get("username", "").strip()
         p = request.form.get("password", "")
+        ip = request.remote_addr or "-"
+        if _login_limited(u, ip):
+            return render_template("login.html", error="尝试过于频繁，请稍后再试"), 429
         if auth_admin(u, p):
+            _clear_login_failures(u, ip)
             flask_session["admin_user"] = u
             flask_session.permanent = True
             return redirect(url_for("dashboard"))
+        _record_login_failure(u, ip)
         return render_template("login.html", error="用户名或密码不正确，或无管理员权限")
     return render_template("login.html", error=None)
 

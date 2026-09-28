@@ -70,7 +70,7 @@ jobs:
             docker stop video-parser-admin || true
             docker rm video-parser-admin || true
 
-            echo "==> [4/4] 启动（7861 仅本机访问，可通过 SSH 隧道管理）"
+            echo "==> [4/4] 启动（7861 仅本机监听，通过 Caddy 的 /admin/ 路由访问）"
             docker run -d \
               --name video-parser-admin \
               --restart unless-stopped \
@@ -78,6 +78,7 @@ jobs:
               -e AUTH_DB_PATH=/opt/video-parser/data/auth.db \
               -e ASSETS_DIR=/opt/video-parser/downloads \
               -e LOGS_DIR=/opt/video-parser/logs \
+              -e SESSION_COOKIE_SECURE=1 \
               -e ADMIN_SECRET="$(printf '%s' "$APP_PASS" | sha256sum | cut -d' ' -f1)" \
               -v /opt/video-parser:/opt/video-parser:ro \
               video-parser-admin:latest

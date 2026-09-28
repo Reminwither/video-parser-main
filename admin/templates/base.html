@@ -11,23 +11,23 @@
   <div class="page">
     <aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark">
       <div class="container-fluid">
-        <a class="navbar-brand navbar-brand-autodark" href="/">VA · 管理后台</a>
+        <a class="navbar-brand navbar-brand-autodark" href="{{ url_for('dashboard') }}">VA · 管理后台</a>
         <div class="collapse navbar-collapse" id="sidebar-menu">
           <ul class="navbar-nav pt-lg-3">
             <li class="nav-item">
-              <a class="nav-link" href="/"><i class="ti ti-dashboard nav-link-icon"></i>运营看板</a>
+              <a class="nav-link" href="{{ url_for('dashboard') }}"><i class="ti ti-dashboard nav-link-icon"></i>运营看板</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link" href="/users"><i class="ti ti-users nav-link-icon"></i>账号使用情况</a>
+              <a class="nav-link" href="{{ url_for('users') }}"><i class="ti ti-users nav-link-icon"></i>账号使用情况</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link" href="/assets"><i class="ti ti-folder nav-link-icon"></i>资产记录库</a>
+              <a class="nav-link" href="{{ url_for('assets') }}"><i class="ti ti-folder nav-link-icon"></i>资产记录库</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link" href="/logout"><i class="ti ti-logout nav-link-icon"></i>退出登录</a>
+              <a class="nav-link" href="{{ url_for('logout') }}"><i class="ti ti-logout nav-link-icon"></i>退出登录</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link" href="http://110.40.138.167:7860/" target="_blank"><i class="ti ti-external-link nav-link-icon"></i>返回主站</a>
+              <a class="nav-link" href="/"><i class="ti ti-external-link nav-link-icon"></i>返回主站</a>
             </li>
           </ul>
         </div>

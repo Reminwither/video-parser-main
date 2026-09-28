@@ -6,7 +6,7 @@
   <div class="card-header">
     <h3 class="card-title">下载目录资产（downloads/）</h3>
     <div class="ms-auto">
-      <form class="d-flex gap-2" method="get" action="/assets">
+      <form class="d-flex gap-2" method="get" action="{{ url_for('assets') }}">
         <input type="text" name="q" class="form-control" placeholder="按文件名检索…" value="{{ query }}">
         <select name="ext" class="form-select" style="width:auto">
           <option value="">全部类型</option>
@@ -40,7 +40,7 @@
             <td class="text-muted">{{ a.size | human }}</td>
             <td class="text-muted">{{ a.mtime }}</td>
             <td class="text-end">
-              <a class="btn btn-sm btn-ghost-secondary" href="/asset/{{ a.rel }}">查看/下载</a>
+              <a class="btn btn-sm btn-ghost-secondary" href="{{ url_for('asset_file', p=a.rel) }}">查看/下载</a>
             </td>
           </tr>
         {% else %}

@@ -13,7 +13,7 @@
         <div class="row align-items-center">
           <div class="col-auto"><i class="ti ti-users fs-2 text-blue"></i></div>
           <div class="col">
-            <div class="font-weight-medium"><a href="/users">{{ s.total_users }} 个账号</a></div>
+            <div class="font-weight-medium"><a href="{{ url_for('users') }}">{{ s.total_users }} 个账号</a></div>
             <div class="text-muted">注册用户总数</div>
           </div>
         </div>
@@ -52,7 +52,7 @@
         <div class="row align-items-center">
           <div class="col-auto"><i class="ti ti-folders fs-2 text-cyan"></i></div>
           <div class="col">
-            <div class="font-weight-medium"><a href="/assets">{{ s.asset_count }} 个资产</a></div>
+            <div class="font-weight-medium"><a href="{{ url_for('assets') }}">{{ s.asset_count }} 个资产</a></div>
             <div class="text-muted">{{ s.asset_size_human }}</div>
           </div>
         </div>

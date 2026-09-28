@@ -16,7 +16,7 @@
           {% if error %}
           <div class="alert alert-danger" role="alert">{{ error }}</div>
           {% endif %}
-          <form method="post" action="/login" autocomplete="off">
+          <form method="post" action="{{ url_for('login') }}" autocomplete="off">
             <div class="mb-3">
               <label class="form-label">用户名</label>
               <input type="text" name="username" class="form-control" placeholder="admin" autocomplete="username" required>
@@ -33,7 +33,7 @@
       </div>
       <div class="text-center text-muted mt-3">
         视频解析工作台 · 仅限管理员访问 ·
-        <a href="http://110.40.138.167:7860/" target="_blank">返回主站</a>
+        <a href="/">返回主站</a>
       </div>
     </div>
   </div>
