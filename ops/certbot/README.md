@@ -4,7 +4,7 @@ Let's Encrypt now issues publicly trusted certificates for public IP addresses. 
 
 ## 1. Set up the HTTP-01 challenge route
 
-Use the server's stable public IPv4 address. Open inbound TCP 80 and 443 in the Tencent Cloud firewall/security group. Keep the app on 7860 and the admin service on 7861 bound to localhost. The current admin service is accessible through an SSH tunnel: `ssh -L 7861:127.0.0.1:7861 root@110.40.138.167`, then open `http://127.0.0.1:7861`.
+Use the server's stable public IPv4 address. Open inbound TCP 80 and 443 in the Tencent Cloud firewall/security group. Keep the app on 7860 and the admin service on 7861 bound to localhost. Caddy serves the admin panel at `https://110.40.138.167/admin/`.
 
 Create the challenge directory and install the deploy hook:
 
@@ -45,7 +45,7 @@ The initial deploy hook copies the certificate and reloads the current Caddy con
 
 ## 3. Switch Caddy to HTTPS
 
-After the first certificate exists, install the final blocks from `ops/caddy/Caddyfile.example` into the Caddyfile. Validate and reload Caddy. Keep the HTTP ACME challenge handler on port 80 so renewal continues working. The optional `:8443` admin block is disabled in the current deployment.
+After the first certificate exists, install the final blocks from `ops/caddy/Caddyfile.example` into the Caddyfile. Validate and reload Caddy. Keep the HTTP ACME challenge handler on port 80 so renewal continues working. The admin panel shares the existing HTTPS port under `/admin/`.
 
 Set these values in the server's `/opt/video-parser/.env`:
 

@@ -10,7 +10,7 @@ Use HTTPS through a reverse proxy for public access. A domain with Caddy-managed
 4. Set `SESSION_COOKIE_SECURE=1` and `ALLOW_REGISTER=0` in the app environment, then restart the app after the proxy is serving HTTPS.
 5. Remove public firewall rules for 7860 and 7861. Keep only the ports required by the proxy and administration access.
 
-The current server uses the public IP certificate, Caddy, and loopback-only app ports. Its admin panel is available through an SSH tunnel to port 7861.
+The current server uses the public IP certificate, Caddy, and loopback-only app ports. Its admin panel is available at `https://110.40.138.167/admin/` through the same HTTPS proxy.
 
 ## Persistence and cached videos
 
