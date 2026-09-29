@@ -492,6 +492,32 @@ async def account_file_download(name: str, request: Request):
     return response
 
 
+@app.get("/account/files/{name}/preview")
+async def account_file_preview(name: str, request: Request):
+    user = _current_user(request)
+    if not user:
+        return RedirectResponse("/login?next=/account/files", status_code=302)
+    match = _ACCOUNT_FILE_RE.fullmatch(name or "")
+    if not match or int(match.group(1)) != int(user["id"]) or not name.endswith((".md", ".txt")):
+        return JSONResponse(status_code=404, content={"detail": "File not found"})
+    root = (Path(__file__).resolve().parent / "downloads" / "reports").resolve()
+    path = (root / name).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        return JSONResponse(status_code=404, content={"detail": "File not found"})
+    try:
+        with path.open("rb") as report_file:
+            raw = report_file.read(256 * 1024 + 1)
+    except OSError:
+        return JSONResponse(status_code=404, content={"detail": "File not found"})
+    kind = "分析报告" if name.endswith(".md") else "ASR 整理稿"
+    response = HTMLResponse(auth_pages.account_file_preview_page(
+        name, kind, raw[:256 * 1024].decode("utf-8", errors="replace"), len(raw) > 256 * 1024
+    ))
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 @app.post("/account/files/delete")
 async def account_file_delete(request: Request):
     user = _current_user(request)

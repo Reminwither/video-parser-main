@@ -214,10 +214,12 @@ def account_files_page(user: dict, files: list[dict], csrf_token: str, error: st
             label = _html.escape(item["label"])
             size = _html.escape(item["size"])
             age = _html.escape(item["modified"])
+            preview = (f'<a href="/account/files/{name}/preview">在线查看</a> · '
+                       if item["name"].endswith((".md", ".txt")) else "")
             rows.append(f"""
   <div class="info-rows" style="margin:12px 0;padding:12px;border:1px solid #263247;border-radius:12px">
     <div><span>{label}</span><span>{size} · {age}</span></div>
-    <div><a href="/account/files/{name}">下载文件</a>
+    <div style="flex-wrap:wrap;gap:8px"><span>{preview}<a href="/account/files/{name}">下载文件</a></span>
       <form method="post" action="/account/files/delete" style="display:inline;margin-left:12px" onsubmit="return confirm('确定删除这个文件吗？')">
         <input type="hidden" name="csrf_token" value="{_html.escape(csrf_token, quote=True)}">
         <input type="hidden" name="name" value="{name}">
@@ -239,12 +241,32 @@ def account_files_page(user: dict, files: list[dict], csrf_token: str, error: st
     return _page("我的分析文件", body)
 
 
+def account_file_preview_page(name: str, label: str, content: str, truncated: bool) -> str:
+    safe_name = _html.escape(name, quote=True)
+    safe_label = _html.escape(label)
+    safe_content = _html.escape(content)
+    note = '<p class="sub">文件较长，网页仅显示前 256 KB。下载后可查看完整内容。</p>' if truncated else ""
+    body = f"""
+<div class="card" style="max-width:960px">
+  {_brand()}
+  <h1>{safe_label}</h1>
+  {note}
+  <div style="display:flex;justify-content:center;gap:18px;margin:18px 0;font-size:14px">
+    <a href="/account/files/{safe_name}">下载完整文件</a>
+    <a href="/account/files">返回我的分析文件</a>
+  </div>
+  <pre style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font-size:14px;max-height:70vh;overflow:auto;padding:18px;border:1px solid var(--border);border-radius:12px">{safe_content}</pre>
+</div>
+"""
+    return _page(safe_label, body)
+
+
 def data_policy_page() -> str:
     body = """
 <div class="card" style="max-width:680px;line-height:1.7">
   <a class="brand" href="/"><span class="brand-logo">VA</span>VidAI</a>
   <h1>使用与数据说明</h1>
-  <p class="sub">公开试用服务 · 更新于 2026 年 9 月 28 日</p>
+  <p class="sub">公开试用服务 · 更新于 2026 年 9 月 29 日</p>
   <p>请仅提交你有权访问和使用的公开视频链接，或上传你有权处理的 MP4 视频。视频号链接暂不能直接解析，可上传自有素材。来源平台可能限制解析或下载；可用性、画质和结果准确性无法保证。AI 报告和语音转写仅供参考，请核对原视频。</p>
   <p style="margin-top:14px">本服务保存账号名、加密后的密码、登录会话、访问 IP、浏览器信息和每日操作计数。还会按账号记录每天是否完成解析、上传、转写和分析，用于在后台汇总功能完成率；这些记录不包含视频链接或内容，删除账号时一并删除。为完成解析与分析，服务器会暂存视频、封面、ASR 转写稿及报告；AI 分析所需内容会发送给已配置的模型服务商。启用语音识别时，提取的音轨会发送给腾讯云语音识别服务进行转写。</p>
   <p style="margin-top:14px">生成文件在超过 48 小时后的每日清理时删除。会话通常有效 7 天；账号数据保留到你在<a href="/account">账户页</a>删除账号。删除后在线账号与会话立即清除，已生成文件按上述周期清理。本机数据库备份保留最近 14 份，腾讯云 COS 异地备份保留 30 天，过期后轮替删除；已写入备份的账号数据也会在相应备份过期后消失。</p>
