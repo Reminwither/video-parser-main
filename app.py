@@ -1271,6 +1271,7 @@ THEME_SCRIPT = """
       hero_eyebrow: "视频智能分析平台",
       hero_title_a: "解析 · 下载 · ", hero_title_b: "AI 取证",
       hero_sub: "粘贴公开视频链接或上传有权使用的 MP4，随后播放、下载、转写或生成时间轴证据报告。链接可用性取决于来源平台的访问限制。",
+      hero_demo: "先看一份报告示例 →",
       sec_parse: "解析视频", sec_preview: "预览", sec_report: "分析与转写结果", sec_help: "使用指南",
       empty_head: "等待视频解析",
       empty_desc: "在左侧解析视频链接或上传自有 MP4，即可在此预览",
@@ -1300,6 +1301,7 @@ THEME_SCRIPT = """
       hero_eyebrow: "Video Intelligence Platform",
       hero_title_a: "Parse · Download · ", hero_title_b: "AI Evidence",
       hero_sub: "Paste a public video link or upload an MP4 you have rights to use, then play, download, transcribe or analyze it. Link availability depends on the source platform.",
+      hero_demo: "See a sample report →",
       sec_parse: "Parse Video", sec_preview: "Preview", sec_report: "Analysis & Transcript", sec_help: "Guide",
       empty_head: "Awaiting video",
       empty_desc: "Parse a link or upload your MP4 on the left to preview it here.",
@@ -1779,6 +1781,7 @@ def create_app():
               <div class="vp-hero-eyebrow"><span class="vp-hero-dot"></span><span data-i18n="hero_eyebrow">视频智能分析平台</span></div>
               <h1 class="vp-hero-title"><span data-i18n="hero_title_a">解析 · 下载 · </span><span class="vp-hero-accent" data-i18n="hero_title_b">AI 取证</span></h1>
               <p class="vp-hero-sub" data-i18n="hero_sub">粘贴公开视频链接，解析可访问的媒体资源，播放或下载，并按时间轴生成多模态证据报告。不同平台的可用性取决于其访问限制。</p>
+              <a class="vp-demo-link" href="/sample-report" data-i18n="hero_demo">先看一份报告示例 →</a>
             </section>
             """
         )
@@ -2237,7 +2240,7 @@ if __name__ == "__main__":
     # 样式经 <link> 注入 <head>（static/css/app.css，改 CSS 无需重启服务），
     # 主题脚本内联注入，head 解析期间同步应用主题，杜绝闪屏与布局抖动。
     # ?v= 版本号防缓存：CSS 迭代后强制浏览器拉新（否则旧样式会残留在用户端）
-    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260926f">\n' + THEME_SCRIPT
+    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260929a">\n' + THEME_SCRIPT
     try:
         combined_app = gr.mount_gradio_app(
             api_app, app, path="/",

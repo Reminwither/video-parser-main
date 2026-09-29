@@ -261,6 +261,51 @@ def account_file_preview_page(name: str, label: str, content: str, truncated: bo
     return _page(safe_label, body)
 
 
+def sample_report_page() -> str:
+    """Public, clearly fictional example of the evidence-first report format."""
+    body = """
+<style>
+body { align-items: flex-start; }
+.sample { max-width: 900px; margin: 20px auto; line-height: 1.7; }
+.sample h2 { font-size: 17px; margin: 26px 0 10px; }
+.sample p { margin: 10px 0; font-size: 14px; }
+.sample table { width: 100%; border-collapse: collapse; min-width: 590px; font-size: 13px; }
+.sample th, .sample td { border: 1px solid var(--border); padding: 10px; text-align: left; vertical-align: top; }
+.sample th { background: var(--accent-light); }
+.sample .sample-table { overflow-x: auto; }
+.sample .tag { display: inline-block; padding: 3px 9px; border-radius: 999px; background: var(--accent-light); color: var(--accent); font-size: 12px; font-weight: 700; }
+.sample .foot a { margin: 0 7px; }
+</style>
+<article class="card sample">
+  <a class="brand" href="/"><span class="brand-logo">VA</span>VidAI</a>
+  <h1>一份视频证据报告长什么样</h1>
+  <p class="sub">以下是虚构的 32 秒“桌面收纳盒介绍”演示。时间点、台词和结论仅用于说明报告结构，并非真实平台视频或效果承诺。</p>
+  <span class="tag">演示报告 · 非真实素材</span>
+
+  <h2>时间轴证据</h2>
+  <div class="sample-table"><table>
+    <thead><tr><th>时间</th><th>可核查的画面与口播</th><th>可据此作出的解释</th></tr></thead>
+    <tbody>
+      <tr><td>00:00–00:08</td><td>镜头展示凌乱桌面；口播：“三步整理桌面”。</td><td>以常见问题开场，让观众迅速理解用途。</td></tr>
+      <tr><td>00:09–00:20</td><td>手部演示收纳盒的三格隔板；画面依次放入笔、线材和便签。</td><td>用操作过程解释结构，而非只展示成品。</td></tr>
+      <tr><td>00:21–00:32</td><td>同角度呈现整理前后桌面；字幕写“整理后”。</td><td>前后对照帮助观众判断收纳效果。</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>核心总结</h2>
+  <p><strong>视频明确表达：</strong>这款收纳盒分为三格，演示了三类物品的摆放方式。</p>
+  <p><strong>合理释义：</strong>视频按“问题 → 操作 → 结果”组织，信息较易跟随。</p>
+  <p><strong>分析推论：</strong>这种结构可能适合演示型产品视频；仅凭视频本身，无法判断销量或传播效果。</p>
+
+  <h2>可复用的创作提示</h2>
+  <p>先让观众看见问题，再展示关键操作，最后用同角度画面呈现结果。真实报告会尽量标注支撑每条判断的时间点，并明确区分画面、字幕、机器转写和推论。</p>
+  <p class="sub" style="text-align:left;margin-top:18px">实际报告取决于视频能否访问、画面与音轨质量及模型服务状态。缺少可识别语音时会标明转写状态；请依据原视频复核重要结论。</p>
+  <div class="foot"><a href="/">分析自己的视频 →</a><a href="/data-policy">使用与数据说明</a></div>
+</article>
+"""
+    return _page("报告示例", body)
+
+
 def data_policy_page() -> str:
     body = """
 <div class="card" style="max-width:680px;line-height:1.7">

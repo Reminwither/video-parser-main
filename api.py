@@ -596,6 +596,11 @@ async def data_policy_page():
     return HTMLResponse(auth_pages.data_policy_page())
 
 
+@app.get("/sample-report")
+async def sample_report_page():
+    return HTMLResponse(auth_pages.sample_report_page())
+
+
 @app.get("/api/auth/me")
 async def auth_me(request: Request):
     user = _current_user(request)

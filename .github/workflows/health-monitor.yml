@@ -36,6 +36,7 @@ jobs:
           }
 
           expect_status 200 "$base/"
+          expect_status 200 "$base/sample-report"
           expect_status 200 "$base/admin/login"
           expect_status 302 "$base/account/files"
           expect_status 401 "$base/api/parse" -X POST -H 'Content-Type: application/json' --data '{"text":""}'
