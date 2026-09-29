@@ -11,9 +11,11 @@ import secrets
 import shutil
 import re
 import mimetypes
+import sqlite3
 from pathlib import Path
 from typing import Optional
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 from requests.exceptions import RequestException, ConnectionError
 from fastapi import FastAPI, Request, Header
@@ -662,7 +664,17 @@ async def api_login(request: Request):
 
 @app.get("/health")
 async def health_check():
-    """健康检查接口"""
+    """Confirm the account database and disk can serve real user requests."""
+    try:
+        with auth_db._DB_LOCK:
+            auth_db._db().execute("SELECT 1 FROM users LIMIT 1").fetchone()
+        disk_free = shutil.disk_usage(Path(__file__).resolve().parent).free
+    except (sqlite3.Error, OSError) as error:
+        logger.error("Health check failed: %s", error)
+        return JSONResponse(status_code=503, content={"status": "unhealthy"})
+    if disk_free < 2 * 1024 * 1024 * 1024:
+        logger.error("Health check failed: disk below processing threshold")
+        return JSONResponse(status_code=503, content={"status": "unhealthy"})
     return {"status": "healthy", "timestamp": int(time.time() * 1000)}
 
 
@@ -706,6 +718,18 @@ async def parse_video(
         if not redirect_url:
             redirect_url = extracted_url
             logger.info(f'Using original URL: {redirect_url}')
+
+        resolved = urlparse(redirect_url)
+        resolved_host = (resolved.hostname or "").lower().rstrip(".")
+        if (resolved_host == "xiaohongshu.com" or resolved_host.endswith(".xiaohongshu.com")) and resolved.path.startswith("/404/"):
+            return JSONResponse(
+                status_code=422,
+                content=make_response(
+                    422,
+                    '小红书未开放这条分享链接。请在小红书 App 内重新复制完整分享链接；仍无法访问时，可上传本人有权使用的 MP4。',
+                    None, None, False,
+                ),
+            )
 
         platform = DOMAIN_TO_NAME.get(UrlParser.get_domain(redirect_url))
         video_id = UrlParser.get_video_id(redirect_url)

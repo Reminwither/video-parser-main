@@ -1275,7 +1275,7 @@ THEME_SCRIPT = """
       empty_head: "等待视频解析",
       empty_desc: "在左侧解析视频链接或上传自有 MP4，即可在此预览",
       empty_s1: "粘贴链接", empty_s2: "解析视频", empty_s3: "AI 取证",
-      help_t1: "粘贴链接或上传", help_d1: "抖音、B站和小红书可用分享链接；视频号链接暂不能直接解析，可上传有权使用的 MP4。",
+      help_t1: "粘贴链接或上传", help_d1: "抖音、B站可粘贴分享链接；小红书请复制 App 内完整链接，无法访问时可上传自有 MP4；视频号需上传自有 MP4。",
       help_t2: "解析视频", help_d2: "封面、时长与视频信息一屏展示，无需手动选择来源",
       help_t3: "播放 / 下载", help_d3: "在线播放使用临时缓存；可下载平台提供的媒体流（B 站自动合并音视频）",
       help_t4: "转写 / AI 分析", help_d4: "可单独导出语音转写 TXT / SRT，或按时间轴分析字幕、音频和画面",
@@ -1304,7 +1304,7 @@ THEME_SCRIPT = """
       empty_head: "Awaiting video",
       empty_desc: "Parse a link or upload your MP4 on the left to preview it here.",
       empty_s1: "Paste link", empty_s2: "Parse", empty_s3: "AI Evidence",
-      help_t1: "Paste or upload", help_d1: "Douyin, Bilibili and Xiaohongshu accept share links. WeChat Channels links are not extracted yet; upload an MP4 you have rights to use.",
+      help_t1: "Paste or upload", help_d1: "Paste Douyin or Bilibili links. For Xiaohongshu, use the full in-app share link or upload your own MP4 if access fails. Upload your own MP4 for WeChat Channels.",
       help_t2: "Parse", help_d2: "Cover, duration and video info shown on one screen, no manual source selection",
       help_t3: "Play / Download", help_d3: "Playback uses temporary cache; downloads use the source media stream (Bilibili audio and video are merged)",
       help_t4: "Transcript / AI", help_d4: "Export a standalone TXT / SRT transcript or analyze subtitle, audio and frame evidence on a timeline",
@@ -1318,7 +1318,7 @@ THEME_SCRIPT = """
       lang_btn: "中文",
       vp_in_url: "Video URL", vp_btn_parse: "Parse Video", vp_dd_platform: "Source Platform",
       vp_btn_clear: "Clear", vp_btn_play: "Play Online", vp_btn_download: "Download Video",
-      vp_upload_input: "Upload your MP4 (Channels supported)", vp_btn_upload: "Use uploaded video",
+      vp_upload_input: "Upload your MP4 (for inaccessible links)", vp_btn_upload: "Use uploaded video",
       vp_chk_speaker: "Multi-speaker (AI analysis)", vp_btn_extract: "AI Timeline Evidence",
       vp_btn_transcribe: "Transcribe only · Export TXT / SRT",
       vp_out_status: "Status", vp_vid: "Online Playback", vp_img_cover: "Cover", vp_file: "Download File"
@@ -1840,13 +1840,13 @@ def create_app():
                     clear_btn = gr.Button("清空", variant="secondary", size="lg", scale=1, elem_classes=["vp-ghost"], elem_id="vp_btn_clear")
 
                 upload_input = gr.File(
-                    label="上传自有 MP4（视频号素材可用）", file_types=[".mp4"], type="filepath",
+                    label="上传自有 MP4（链接不可用时使用）", file_types=[".mp4"], type="filepath",
                     elem_id="vp_upload_input",
                 )
                 upload_btn = gr.Button("使用上传的视频", variant="secondary", elem_id="vp_btn_upload")
                 upload_minutes = max(1, int(os.getenv("MAX_UPLOAD_DURATION_SECONDS", "1800"))) / 60
                 gr.Markdown(
-                    f"视频号分享链接暂不能直接解析。可先从本人有权使用的素材导出 MP4 再上传"
+                    f"小红书链接若无法访问、或使用视频号素材，可先从本人有权使用的素材导出 MP4 再上传"
                     f"（最多 {max_upload_bytes() // (1024 * 1024)} MB、{upload_minutes:g} 分钟）。"
                 )
 
@@ -1967,34 +1967,39 @@ def create_app():
             inputs=[upload_input, platform_dropdown],
             outputs=[status_output, title_bar, cover_output, video_url_state, guide_html, video_info_state,
                      video_output, download_output, content_output, report_file_output, asr_text_output, asr_srt_output],
+            concurrency_limit=2, concurrency_id="media_transfer",
         )
 
         play_btn.click(
             fn=play_video,
             js=_gate_js("play"),
             inputs=[video_info_state],
-            outputs=[video_output, status_output]
+            outputs=[video_output, status_output],
+            concurrency_limit=2, concurrency_id="media_transfer",
         )
 
         download_btn.click(
             fn=download_video,
             js=_gate_js("download"),
             inputs=[video_info_state],
-            outputs=[download_output, status_output]
+            outputs=[download_output, status_output],
+            concurrency_limit=2, concurrency_id="media_transfer",
         )
 
         extract_btn.click(
             fn=extract_video_content,
             js=_gate_js("extract"),
             inputs=[multi_speaker_chk, video_info_state],
-            outputs=[content_output, status_output, report_file_output, asr_text_output, asr_srt_output]
+            outputs=[content_output, status_output, report_file_output, asr_text_output, asr_srt_output],
+            concurrency_limit=1, concurrency_id="media_analysis",
         )
 
         transcribe_btn.click(
             fn=transcribe_video_only,
             js=_gate_js("transcribe"),
             inputs=[video_info_state],
-            outputs=[content_output, status_output, report_file_output, asr_text_output, asr_srt_output]
+            outputs=[content_output, status_output, report_file_output, asr_text_output, asr_srt_output],
+            concurrency_limit=1, concurrency_id="media_analysis",
         )
 
         clear_btn.click(
@@ -2015,7 +2020,7 @@ def create_app():
                 <div class="vp-help-item">
                   <div class="vp-help-step">01</div>
                   <div class="vp-help-title" data-i18n="help_t1">粘贴链接或上传</div>
-                  <div class="vp-help-desc" data-i18n="help_d1">抖音、B站和小红书可用分享链接；视频号链接暂不能直接解析，可上传有权使用的 MP4。</div>
+                  <div class="vp-help-desc" data-i18n="help_d1">抖音、B站可粘贴分享链接；小红书请复制 App 内完整链接，无法访问时可上传自有 MP4；视频号需上传自有 MP4。</div>
                 </div>
                 <div class="vp-help-item">
                   <div class="vp-help-step">02</div>
@@ -2039,6 +2044,7 @@ def create_app():
             """
         )
 
+    app.queue(max_size=12)
     return app
 
 

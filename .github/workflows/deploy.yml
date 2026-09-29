@@ -6,6 +6,7 @@ name: Deploy video-parser to Lighthouse
     paths-ignore:
       - 'admin/**'
       - '.github/workflows/deploy-admin.yml'
+      - '.github/workflows/health-monitor.yml'
   workflow_dispatch:
 
 concurrency:
@@ -18,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out release commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 

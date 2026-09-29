@@ -1,7 +1,7 @@
 import re
 import requests
 import random
-from urllib.parse import urlparse, parse_qs, urljoin
+from urllib.parse import urlparse, parse_qs, urljoin, urlencode
 from configs.logging_config import logger
 from configs.general_constants import USER_AGENT_PC, DOMAIN_TO_NAME
 from utils.url_safety import assert_public_http_url, open_public_once
@@ -113,13 +113,13 @@ class UrlParser:
             query_params = parse_qs(parsed_url.query)
             xsec_token = query_params.get('xsec_token', [None])[0]
             xsec_source = query_params.get('xsec_source', [None])[0]
-            params = []
+            params = {}
             if xsec_token:
-                params.append(f"xsec_token={xsec_token}")
+                params['xsec_token'] = xsec_token
             if xsec_source:
-                params.append(f"xsec_source={xsec_source}")
+                params['xsec_source'] = xsec_source
             if params:
-                address = f"{address}?{'&'.join(params)}"
+                address = f"{address}?{urlencode(params)}"
         elif platform == "快手":
             address = address.replace('http://', 'https://')
         elif platform == "YouTube":

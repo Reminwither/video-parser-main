@@ -620,6 +620,12 @@ def asset_file(p):
 
 @app.route("/health")
 def health():
+    try:
+        c = ro_conn()
+        c.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+        c.close()
+    except sqlite3.Error:
+        return {"ok": False}, 503
     return {"ok": True}, 200
 
 
