@@ -347,6 +347,30 @@ def get_funnel_stats():
     return data
 
 
+def get_feedback_stats():
+    """Seven-day report ratings from active non-admin accounts."""
+    data = {"ready": False, "positive": 0, "negative": 0, "total": 0, "positive_rate": None}
+    try:
+        c = ro_conn()
+        rows = c.execute(
+            "SELECT f.rating, COUNT(*) FROM report_feedback f JOIN users u ON u.id=f.user_id "
+            "WHERE u.is_admin=0 AND substr(f.updated_at,1,10)>=date('now','-6 days') "
+            "GROUP BY f.rating"
+        ).fetchall()
+        c.close()
+    except sqlite3.Error:
+        return data
+    for rating, count in rows:
+        if rating == 1:
+            data["positive"] = count
+        elif rating == -1:
+            data["negative"] = count
+    data["total"] = data["positive"] + data["negative"]
+    data["positive_rate"] = round(100 * data["positive"] / data["total"], 1) if data["total"] else None
+    data["ready"] = True
+    return data
+
+
 def get_resource_stats():
     """Seven-day provider units and a clearly bounded paid-provider scenario."""
     data = {"ready": False, "model_calls": 0, "model_failed": 0,
@@ -544,7 +568,7 @@ def logout():
 @require_admin
 def dashboard():
     return render_template("dashboard.html", s=get_stats(), m=get_usage_stats(), r=get_resource_stats(),
-                           f=get_funnel_stats(),
+                           f=get_funnel_stats(), q=get_feedback_stats(),
                            user=flask_session.get("admin_user"))
 
 

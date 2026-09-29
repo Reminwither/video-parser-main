@@ -100,6 +100,20 @@
 
 <div class="row row-cards mt-2">
   <div class="col-12"><div class="card">
+    <div class="card-header"><h3 class="card-title">报告有用性反馈 · 近 7 天</h3></div>
+    <div class="card-body">
+      {% if q.ready %}
+      <div><strong>{{ q.positive }}</strong> 份“有帮助” · <strong>{{ q.negative }}</strong> 份“需改进” · 好评占比 <strong>{{ q.positive_rate ~ '%' if q.positive_rate is not none else '—' }}</strong></div>
+      <div class="text-muted mt-2">仅统计主动评价的报告，一份报告只计当前一次选择；样本量 {{ q.total }}。未评价的报告不计入，不应将此比例理解为所有用户满意度。后台不保存报告文件名、内容或文字评论。</div>
+      {% else %}
+      <div class="text-muted">等待主站创建报告评价数据表。</div>
+      {% endif %}
+    </div>
+  </div></div>
+</div>
+
+<div class="row row-cards mt-2">
+  <div class="col-12"><div class="card">
     <div class="card-header"><h3 class="card-title">模型与语音服务用量 · 近 7 天</h3></div>
     <div class="card-body">
       {% if r.ready %}

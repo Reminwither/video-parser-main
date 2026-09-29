@@ -1933,6 +1933,7 @@ def create_app():
                 visible=False,
                 elem_id="vp_report_download",
             )
+            gr.HTML('<div class="vp-report-history"><a href="/account/files">查看并评价我的分析文件 →</a></div>')
             with gr.Row():
                 asr_text_output = gr.File(label="下载 ASR 整理稿（TXT）", visible=False)
                 asr_srt_output = gr.File(label="下载 ASR 原始字幕（SRT）", visible=False)
@@ -2240,7 +2241,7 @@ if __name__ == "__main__":
     # 样式经 <link> 注入 <head>（static/css/app.css，改 CSS 无需重启服务），
     # 主题脚本内联注入，head 解析期间同步应用主题，杜绝闪屏与布局抖动。
     # ?v= 版本号防缓存：CSS 迭代后强制浏览器拉新（否则旧样式会残留在用户端）
-    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260929a">\n' + THEME_SCRIPT
+    HEAD_CONTENT = '<link rel="stylesheet" href="/static/css/app.css?v=20260929b">\n' + THEME_SCRIPT
     try:
         combined_app = gr.mount_gradio_app(
             api_app, app, path="/",

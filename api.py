@@ -15,7 +15,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 from contextlib import asynccontextmanager
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from requests.exceptions import RequestException, ConnectionError
 from fastapi import FastAPI, Request, Header
@@ -512,12 +512,44 @@ async def account_file_preview(name: str, request: Request):
     except OSError:
         return JSONResponse(status_code=404, content={"detail": "File not found"})
     kind = "分析报告" if name.endswith(".md") else "ASR 整理稿"
+    csrf_token = request.cookies.get(auth_db.SESSION_COOKIE, "")
     response = HTMLResponse(auth_pages.account_file_preview_page(
-        name, kind, raw[:256 * 1024].decode("utf-8", errors="replace"), len(raw) > 256 * 1024
+        name, kind, raw[:256 * 1024].decode("utf-8", errors="replace"), len(raw) > 256 * 1024,
+        csrf_token=csrf_token,
+        feedback_rating=auth_db.get_report_feedback(user["id"], name) if name.endswith(".md") else None,
     ))
     response.headers["Cache-Control"] = "private, no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+@app.post("/account/files/feedback")
+async def account_file_feedback(request: Request):
+    user = _current_user(request)
+    if not user:
+        return RedirectResponse("/login?next=/account/files", status_code=302)
+    form = await request.form()
+    cookie_token = request.cookies.get(auth_db.SESSION_COOKIE, "")
+    form_token = str(form.get("csrf_token", ""))
+    if not cookie_token or not secrets.compare_digest(cookie_token, form_token):
+        return JSONResponse(status_code=403, content={"detail": "页面已过期，请刷新后重试"})
+    name = str(form.get("name", ""))
+    match = _ACCOUNT_FILE_RE.fullmatch(name)
+    if not match or int(match.group(1)) != int(user["id"]) or not name.endswith(".md"):
+        return JSONResponse(status_code=404, content={"detail": "File not found"})
+    root = (Path(__file__).resolve().parent / "downloads" / "reports").resolve()
+    path = (root / name).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        return JSONResponse(status_code=404, content={"detail": "File not found"})
+    try:
+        rating = int(str(form.get("rating", "")))
+    except ValueError:
+        return JSONResponse(status_code=400, content={"detail": "评价无效"})
+    if rating not in (-1, 1):
+        return JSONResponse(status_code=400, content={"detail": "评价无效"})
+    if not auth_db.set_report_feedback(user["id"], name, rating):
+        return JSONResponse(status_code=503, content={"detail": "评价保存失败，请稍后重试"})
+    return RedirectResponse(f"/account/files/{quote(name, safe='')}/preview", status_code=303)
 
 
 @app.post("/account/files/delete")

@@ -170,6 +170,14 @@ def init_db() -> None:
                 PRIMARY KEY (day, user_id, action)
             );
             CREATE INDEX IF NOT EXISTS idx_user_activity_action_day ON user_activity(action, day);
+            CREATE TABLE IF NOT EXISTS report_feedback (
+                report_key TEXT NOT NULL,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                rating INTEGER NOT NULL CHECK(rating IN (-1, 1)),
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, report_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_report_feedback_updated ON report_feedback(updated_at);
             CREATE TABLE IF NOT EXISTS uploaded_files (
                 path TEXT NOT NULL,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -288,6 +296,42 @@ def record_user_activity(user_id: int, action: str) -> None:
             c.commit()
     except (sqlite3.Error, TypeError, ValueError):
         _LOG.exception("Unable to record user activity")
+
+
+def get_report_feedback(user_id: int, filename: str) -> int | None:
+    """Read a user's rating by a one-way key; filenames and content are not stored."""
+    report_key = hashlib.sha256(filename.encode("utf-8")).hexdigest()
+    try:
+        with _DB_LOCK:
+            row = _db().execute(
+                "SELECT rating FROM report_feedback WHERE user_id=? AND report_key=?",
+                (int(user_id), report_key),
+            ).fetchone()
+        return int(row["rating"]) if row else None
+    except (sqlite3.Error, TypeError, ValueError):
+        _LOG.exception("Unable to read report feedback")
+        return None
+
+
+def set_report_feedback(user_id: int, filename: str, rating: int) -> bool:
+    """Store a rating after the caller validates report ownership."""
+    if rating not in (-1, 1):
+        return False
+    report_key = hashlib.sha256(filename.encode("utf-8")).hexdigest()
+    try:
+        with _DB_LOCK:
+            c = _db()
+            c.execute(
+                "INSERT INTO report_feedback(report_key,user_id,rating,updated_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(user_id,report_key) DO UPDATE SET "
+                "rating=excluded.rating, updated_at=excluded.updated_at",
+                (report_key, int(user_id), rating, _now_iso()),
+            )
+            c.commit()
+        return True
+    except (sqlite3.Error, TypeError, ValueError):
+        _LOG.exception("Unable to save report feedback")
+        return False
 
 
 def record_resource_usage(

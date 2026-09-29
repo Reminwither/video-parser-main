@@ -241,11 +241,27 @@ def account_files_page(user: dict, files: list[dict], csrf_token: str, error: st
     return _page("我的分析文件", body)
 
 
-def account_file_preview_page(name: str, label: str, content: str, truncated: bool) -> str:
+def account_file_preview_page(name: str, label: str, content: str, truncated: bool,
+                              csrf_token: str = "", feedback_rating: int | None = None) -> str:
     safe_name = _html.escape(name, quote=True)
     safe_label = _html.escape(label)
     safe_content = _html.escape(content)
     note = '<p class="sub">文件较长，网页仅显示前 256 KB。下载后可查看完整内容。</p>' if truncated else ""
+    feedback = ""
+    if name.endswith(".md") and csrf_token:
+        rating_text = {1: "已评价：有帮助", -1: "已评价：需改进"}.get(feedback_rating, "")
+        feedback = f"""
+  <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border)">
+    <p style="font-size:14px;font-weight:600">这份报告有帮助吗？</p>
+    <p style="font-size:12px;color:var(--text-sub);margin:7px 0">只记录选择，不收集视频内容或评论。可以随时修改评价。</p>
+    <form method="post" action="/account/files/feedback" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px">
+      <input type="hidden" name="csrf_token" value="{_html.escape(csrf_token, quote=True)}">
+      <input type="hidden" name="name" value="{safe_name}">
+      <button type="submit" name="rating" value="1" style="padding:9px 14px;border:1px solid var(--border-strong);border-radius:9px;background:var(--accent-light);color:var(--accent);cursor:pointer">有帮助</button>
+      <button type="submit" name="rating" value="-1" style="padding:9px 14px;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface);color:var(--text);cursor:pointer">需改进</button>
+    </form>
+    <p style="font-size:12px;color:var(--text-sub);margin-top:10px">{rating_text}</p>
+  </div>"""
     body = f"""
 <div class="card" style="max-width:960px">
   {_brand()}
@@ -256,6 +272,7 @@ def account_file_preview_page(name: str, label: str, content: str, truncated: bo
     <a href="/account/files">返回我的分析文件</a>
   </div>
   <pre style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font-size:14px;max-height:70vh;overflow:auto;padding:18px;border:1px solid var(--border);border-radius:12px">{safe_content}</pre>
+  {feedback}
 </div>
 """
     return _page(safe_label, body)
@@ -313,7 +330,7 @@ def data_policy_page() -> str:
   <h1>使用与数据说明</h1>
   <p class="sub">公开试用服务 · 更新于 2026 年 9 月 29 日</p>
   <p>请仅提交你有权访问和使用的公开视频链接，或上传你有权处理的 MP4 视频。视频号链接暂不能直接解析，可上传自有素材。来源平台可能限制解析或下载；可用性、画质和结果准确性无法保证。AI 报告和语音转写仅供参考，请核对原视频。</p>
-  <p style="margin-top:14px">本服务保存账号名、加密后的密码、登录会话、访问 IP、浏览器信息和每日操作计数。还会按账号记录每天是否完成解析、上传、转写和分析，用于在后台汇总功能完成率；这些记录不包含视频链接或内容，删除账号时一并删除。为完成解析与分析，服务器会暂存视频、封面、ASR 转写稿及报告；AI 分析所需内容会发送给已配置的模型服务商。启用语音识别时，提取的音轨会发送给腾讯云语音识别服务进行转写。</p>
+  <p style="margin-top:14px">本服务保存账号名、加密后的密码、登录会话、访问 IP、浏览器信息和每日操作计数。还会按账号记录每天是否完成解析、上传、转写和分析，用于在后台汇总功能完成率；若你主动评价报告，会保存“有帮助/需改进”的选择及报告文件名的不可逆摘要，不保存文字评论。这些统计记录不包含视频链接或报告内容，删除账号时一并删除。为完成解析与分析，服务器会暂存视频、封面、ASR 转写稿及报告；AI 分析所需内容会发送给已配置的模型服务商。启用语音识别时，提取的音轨会发送给腾讯云语音识别服务进行转写。</p>
   <p style="margin-top:14px">生成文件在超过 48 小时后的每日清理时删除。会话通常有效 7 天；账号数据保留到你在<a href="/account">账户页</a>删除账号。删除后在线账号与会话立即清除，已生成文件按上述周期清理。本机数据库备份保留最近 14 份，腾讯云 COS 异地备份保留 30 天，过期后轮替删除；已写入备份的账号数据也会在相应备份过期后消失。</p>
   <p style="margin-top:14px">不要提交私人、机密或无权处理的内容。请遵守来源平台的规则以及适用法律。使用本服务即表示你了解以上处理方式。</p>
   <div class="foot"><a href="/">← 返回工作台</a></div>

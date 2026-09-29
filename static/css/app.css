@@ -285,6 +285,9 @@ html[data-theme="dark"] .vp-theme-round .vp-icon-moon { display: none !important
   font-size: 14px; font-weight: 600; text-decoration: none !important;
 }
 .vp-demo-link:hover { text-decoration: underline !important; }
+.vp-report-history { margin: 8px 0 14px; font-size: 13px; }
+.vp-report-history a { color: var(--vp-accent) !important; text-decoration: none !important; }
+.vp-report-history a:hover { text-decoration: underline !important; }
 @media (max-width: 640px) {
   .vp-hero { padding: 32px 0 4px; }
   .vp-hero-title { font-size: 32px; }
