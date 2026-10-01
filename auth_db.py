@@ -18,6 +18,7 @@ import secrets
 import hashlib
 import hmac
 import logging
+import json
 import threading
 import time
 from contextvars import ContextVar
@@ -61,6 +62,12 @@ _DB_LOCK = threading.Lock()
 _DB_LOCAL = threading.local()
 _LOG = logging.getLogger(__name__)
 _RESOURCE_TASK = ContextVar("vp_resource_task", default=None)
+_PROCESSING_RUNTIME_ID = secrets.token_hex(16)
+TASK_PHASE_LABELS = {
+    "starting": "开始处理", "evidence": "整理视频证据", "analysis": "生成分析报告",
+    "transcribing": "识别语音", "saving": "保存文件", "complete": "处理完成",
+    "failed": "处理失败，请返回工作台重试", "interrupted": "服务重启时中断，请返回工作台重试",
+}
 
 
 @dataclass
@@ -69,6 +76,7 @@ class ProcessingTask:
     token: object
     started: float
     closed: bool = False
+    owner_id: int = 0
 
 
 def _now_iso() -> str:
@@ -253,6 +261,14 @@ def init_db() -> None:
         )
         if "reason" not in {row["name"] for row in c.execute("PRAGMA table_info(report_feedback)")}:
             c.execute("ALTER TABLE report_feedback ADD COLUMN reason TEXT NOT NULL DEFAULT ''")
+        task_columns = {row["name"] for row in c.execute("PRAGMA table_info(processing_tasks)")}
+        for name, definition in {
+            "runtime_id": "TEXT NOT NULL DEFAULT ''", "phase": "TEXT NOT NULL DEFAULT 'starting'",
+            "percent": "INTEGER NOT NULL DEFAULT 0", "output_keys": "TEXT NOT NULL DEFAULT '[]'",
+        }.items():
+            if name not in task_columns:
+                c.execute(f"ALTER TABLE processing_tasks ADD COLUMN {name} {definition}")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_processing_tasks_user_started ON processing_tasks(user_id,started_at)")
         c.commit()
     seed_admin_if_empty()
 
@@ -450,28 +466,82 @@ def begin_processing_task(user_id: int, action: str, platform: str) -> Processin
             with c:
                 c.execute("DELETE FROM processing_tasks WHERE day < date('now','-90 days')")
                 c.execute(
-                    "INSERT INTO processing_tasks(id,user_id,day,action,platform,outcome,started_at) "
-                    "VALUES (?,?,?,?,?,'running',?)",
-                    (task_id, int(user_id), datetime.now(timezone.utc).strftime("%Y-%m-%d"), action, platform, _now_iso()),
+                    "INSERT INTO processing_tasks(id,user_id,day,action,platform,outcome,started_at,runtime_id) "
+                    "VALUES (?,?,?,?,?,'running',?,?)",
+                    (task_id, int(user_id), datetime.now(timezone.utc).strftime("%Y-%m-%d"), action, platform, _now_iso(), _PROCESSING_RUNTIME_ID),
                 )
-        return ProcessingTask(task_id, _RESOURCE_TASK.set(task_id), time.monotonic())
+        return ProcessingTask(task_id, _RESOURCE_TASK.set(task_id), time.monotonic(), owner_id=int(user_id))
     except (sqlite3.Error, TypeError, ValueError):
         _LOG.exception("Unable to start processing attribution")
         return None
 
 
-def end_processing_task(task: ProcessingTask | None, *, succeeded: bool) -> None:
+def update_processing_progress(task: ProcessingTask | None, value: float, phase: str) -> None:
+    if task is None or task.closed or phase not in {"evidence", "analysis", "transcribing", "saving"}:
+        return
+    try:
+        percent = max(0, min(99, int(float(value) * 100)))
+        with _DB_LOCK:
+            c = _db()
+            c.execute("UPDATE processing_tasks SET percent=MAX(percent,?),phase=? "
+                      "WHERE id=? AND outcome='running' AND (percent<? OR phase<>?)",
+                      (percent, phase, task.task_id, percent, phase))
+            c.commit()
+    except (sqlite3.Error, TypeError, ValueError, OverflowError):
+        _LOG.exception("Unable to record processing progress")
+
+
+def recover_interrupted_processing_tasks() -> int:
+    """Call only from the single serving process at startup, never from init_db."""
+    with _DB_LOCK:
+        c = _db()
+        with c:
+            count = c.execute("UPDATE processing_tasks SET outcome='failed',phase='interrupted',finished_at=? "
+                              "WHERE outcome='running' AND runtime_id<>?",
+                              (_now_iso(), _PROCESSING_RUNTIME_ID)).rowcount
+    return count
+
+
+def list_processing_tasks(user_id: int) -> list[dict]:
+    with _DB_LOCK:
+        rows = _db().execute(
+            "SELECT id,action,platform,outcome,started_at,finished_at,phase,percent,output_keys "
+            "FROM processing_tasks WHERE user_id=? ORDER BY started_at DESC,id DESC LIMIT 30", (int(user_id),)
+        ).fetchall()
+    tasks = []
+    for row in rows:
+        task = dict(row)
+        try:
+            keys = json.loads(task.pop("output_keys"))
+            task["output_keys"] = [key for key in keys if isinstance(key, str) and re.fullmatch(r"[0-9a-f]{64}", key)][:3] if isinstance(keys, list) else []
+        except (ValueError, TypeError):
+            task["output_keys"] = []
+        tasks.append(task)
+    return tasks
+
+
+def end_processing_task(task: ProcessingTask | None, *, succeeded: bool, outputs=()) -> None:
     if task is None or task.closed:
         return
     try:
+        output_keys = []
+        for path in outputs:
+            if not path:
+                continue
+            name = os.path.basename(os.fspath(path))
+            match = REPORT_FILE_RE.fullmatch(name)
+            if match and int(match.group(1)) == task.owner_id:
+                output_keys.append(hashlib.sha256(name.encode("utf-8")).hexdigest())
+        output_keys = list(dict.fromkeys(output_keys))[:3] if succeeded else []
         with _DB_LOCK:
             c = _db()
             with c:
                 c.execute(
-                    "UPDATE processing_tasks SET outcome=?,finished_at=?,duration_ms=? "
+                    "UPDATE processing_tasks SET outcome=?,finished_at=?,duration_ms=?,phase=?,percent=?,output_keys=? "
                     "WHERE id=? AND outcome='running'",
                     ("success" if succeeded else "failed", _now_iso(),
-                     max(0, int((time.monotonic() - task.started) * 1000)), task.task_id),
+                     max(0, int((time.monotonic() - task.started) * 1000)), "complete" if succeeded else "failed",
+                     100 if succeeded else 0, json.dumps(output_keys), task.task_id),
                 )
     except sqlite3.Error:
         _LOG.exception("Unable to finish processing attribution")

@@ -2,7 +2,8 @@
   "name": "vidai-ui-checks",
   "private": true,
   "scripts": {
-    "test:auth": "node --test test_auth_modal.cjs"
+    "test:auth": "node --test test_auth_modal.cjs",
+    "test:tasks": "node --test test_task_history.cjs"
   },
   "devDependencies": {
     "jsdom": "^30.1.1"

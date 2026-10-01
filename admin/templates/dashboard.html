@@ -71,6 +71,7 @@
       <div class="text-muted mt-2">模型次数为逻辑调用；SDK 内部自动重试不逐次计数，失败或未回传的 token 不可推断。语音为提交时长，包含失败请求，不等于计费时长；分析成功时 ASR 仍可能失败。尚未结束的任务不计入成功/失败组，已记录的用量仍可见。</div>
       {% endif %}
       {% if t.stale %}<div class="alert alert-warning mt-3 mb-0">{{ t.stale }} 个任务已超过 2 小时尚未结束，可能在服务重启时中断，请结合日志核对。</div>{% endif %}
+      {% if t.interrupted %}<div class="alert alert-warning mt-3 mb-0">{{ t.interrupted }} 个任务在服务重启时中断，归入失败任务；结束耗时无法确认，已排除在平均处理秒数之外。已记录的资源消耗仍保留，不会自动重跑。</div>{% endif %}
     </div>
     {% if t.rows %}<div class="table-responsive"><table class="table table-sm card-table">
       <thead><tr><th>任务</th><th>结果</th><th>次数</th><th>平均处理秒数</th><th>每任务模型调用</th><th>每任务输入 token</th><th>每任务输出 token</th><th>每任务语音分钟</th><th>模型失败调用</th><th>缺 token 调用</th><th>语音失败调用</th></tr></thead>

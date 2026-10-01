@@ -1,6 +1,8 @@
 """Run the shipped handlers with fake media/providers and isolated SQLite."""
 import ast
 import html
+import hashlib
+import json
 import logging
 import os
 import secrets
@@ -24,7 +26,11 @@ class ProcessingAttributionTests(unittest.TestCase):
         names = {"transcribe_video_only", "extract_video_content"}
         functions = ast.Module(body=[n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names], type_ignores=[])
         evidence = SimpleNamespace(frames=[1], subtitles=[], raw_transcript=[], transcript_status="asr_empty")
+        observed = []
         def analyze(*args, **kwargs):
+            for value in (.4, .8):
+                kwargs["progress"](value, "provider detail")
+                observed.append(auth_db.list_processing_tasks(1)[0])
             auth_db.record_resource_usage("model-api", "vision", "test-model", input_tokens=40, output_tokens=8)
             return "Synthetic report", evidence
         def transcribe(*args, **kwargs):
@@ -39,7 +45,7 @@ class ProcessingAttributionTests(unittest.TestCase):
                   _analysis_result=lambda *a: a, _asr_status_label=lambda x: x, REPORT_PLACEHOLDER="empty",
                   AI_ANALYSIS_ENABLED=True, OpenAI=lambda **kw: object(), QWEN_API_BASE_URL="", QWEN_API_KEY="",
                   QWEN_MODEL_ID="test-model", MAX_ANALYSIS_FRAMES=1, client=SimpleNamespace(download_dir=output),
-                  analyze_video_evidence_first=analyze, transcribe_audio=transcribe)
+                  analyze_video_evidence_first=analyze, transcribe_audio=transcribe, observed=observed)
         exec(compile(functions, "app.py", "exec"), ns)
         return ns
 
@@ -48,9 +54,33 @@ class ProcessingAttributionTests(unittest.TestCase):
             ns = self.handlers(tmp)
             result = ns["extract_video_content"](video_info={"platform": "抖音", "video_id": "sample"}, progress=lambda *a, **kw: None)
             self.assertTrue(Path(result[2]).is_file())
+            self.assertEqual(json.loads(self.db.execute("SELECT output_keys FROM processing_tasks").fetchone()[0]),
+                             [hashlib.sha256(Path(result[2]).name.encode()).hexdigest()])
+            self.assertEqual([(r["phase"], r["percent"]) for r in ns["observed"]], [("evidence", 40), ("analysis", 80)])
         row = self.db.execute("SELECT action,outcome FROM processing_tasks").fetchone()
         self.assertEqual(tuple(row), ("analysis", "success"))
         self.assertEqual(self.db.execute("SELECT input_tokens FROM task_resource_usage").fetchone()[0], 40)
+        self.assertIsNone(auth_db._RESOURCE_TASK.get())
+
+    def test_successful_asr_records_its_progress_and_both_output_hashes(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"ASR_MODEL_ID": "test"}):
+            ns = self.handlers(tmp)
+            names = [f"vp-u1-sample_1727000000_123456abcdef_asr.{ext}" for ext in ("txt", "srt")]
+            paths = [str(Path(tmp) / name) for name in names]
+            def transcribe(*args, **kwargs):
+                kwargs["progress"](.45, "private provider detail")
+                self.assertEqual(auth_db.list_processing_tasks(1)[0]["phase"], "transcribing")
+                return [SimpleNamespace(text="Synthetic speech")], "asr_ok", None
+            def save(*args):
+                self.assertEqual(auth_db.list_processing_tasks(1)[0]["phase"], "saving")
+                for path in paths:
+                    Path(path).write_text("Synthetic speech", encoding="utf-8")
+                return paths
+            ns.update(transcribe_audio=transcribe, format_diarized_transcript=lambda cues: cues[0].text, _save_asr_exports=save)
+            ns["transcribe_video_only"]({"platform": "自有视频", "video_id": "sample"}, progress=lambda *a, **kw: None)
+        row = self.db.execute("SELECT outcome,phase,percent,output_keys FROM processing_tasks").fetchone()
+        self.assertEqual(tuple(row)[:3], ("success", "complete", 100))
+        self.assertEqual(json.loads(row["output_keys"]), [hashlib.sha256(name.encode()).hexdigest() for name in names])
         self.assertIsNone(auth_db._RESOURCE_TASK.get())
 
     def test_empty_asr_keeps_submitted_audio_on_failed_task_and_releases_slot(self):

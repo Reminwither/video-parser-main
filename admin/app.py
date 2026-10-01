@@ -472,11 +472,13 @@ def get_resource_stats():
 
 def get_task_resource_stats():
     """Average units per finished task, without multiplying tasks by calls."""
-    data = {"ready": False, "rows": [], "stale": 0}
+    data = {"ready": False, "rows": [], "stale": 0, "interrupted": 0}
     try:
         with closing(ro_conn()) as c:
+            has_phase = "phase" in {r[1] for r in c.execute("PRAGMA table_info(processing_tasks)")}
+            duration = "AVG(CASE WHEN t.phase='interrupted' THEN NULL ELSE t.duration_ms END)" if has_phase else "AVG(t.duration_ms)"
             rows = c.execute(
-                "SELECT t.action,t.outcome,COUNT(*),SUM(t.duration_ms),"
+                f"SELECT t.action,t.outcome,COUNT(*),{duration},"
                 "SUM(COALESCE(r.model_calls,0)),SUM(COALESCE(r.model_failed,0)),"
                 "SUM(COALESCE(r.missing,0)),SUM(COALESCE(r.input_tokens,0)),"
                 "SUM(COALESCE(r.output_tokens,0)),SUM(COALESCE(r.audio_ms,0)),"
@@ -496,11 +498,16 @@ def get_task_resource_stats():
                 "WHERE u.is_admin=0 AND t.day>=date('now','-6 days') AND t.outcome='running' "
                 "AND julianday(t.started_at)<julianday('now','-2 hours')"
             ).fetchone()[0]
+            if has_phase:
+                data["interrupted"] = c.execute(
+                    "SELECT COUNT(*) FROM processing_tasks t JOIN users u ON u.id=t.user_id "
+                    "WHERE u.is_admin=0 AND t.day>=date('now','-6 days') AND t.phase='interrupted'"
+                ).fetchone()[0]
         actions = {"analysis": "AI 分析", "transcribe": "独立转写"}
         outcomes = {"running": "尚未结束", "success": "成功", "failed": "失败"}
         for action, outcome, tasks, ms, calls, failed, missing, inputs, outputs, audio, asr_failed in rows:
             data["rows"].append({"action": actions[action], "outcome": outcomes[outcome], "tasks": tasks,
-                                 "avg_seconds": round(ms / tasks / 1000, 1) if outcome != "running" else None,
+                                 "avg_seconds": round(ms / 1000, 1) if outcome != "running" and ms is not None else None,
                                  "avg_calls": round(calls / tasks, 2), "model_failed": failed,
                                  "missing": missing, "asr_failed": asr_failed,
                                  "avg_input": round(inputs / tasks), "avg_output": round(outputs / tasks),

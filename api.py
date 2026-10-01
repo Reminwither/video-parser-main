@@ -474,8 +474,31 @@ async def account_files_page_view(request: Request):
     if not user:
         return RedirectResponse("/login?next=/account/files", status_code=302)
     token = request.cookies.get(auth_db.SESSION_COOKIE, "")
-    response = HTMLResponse(auth_pages.account_files_page(user, _account_report_files(user["id"]), token))
+    snapshot = _account_task_snapshot(user["id"])
+    response = HTMLResponse(auth_pages.account_files_page(user, snapshot["files"], token, tasks=snapshot["tasks"]))
     response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def _account_task_snapshot(user_id: int) -> dict:
+    files = _account_report_files(user_id)
+    by_key = {hashlib.sha256(item["name"].encode("utf-8")).hexdigest(): item for item in files}
+    tasks = auth_db.list_processing_tasks(user_id)
+    for task in tasks:
+        task["files"] = [by_key[key] for key in task.pop("output_keys") if key in by_key]
+        phase = ("complete" if task["outcome"] == "success" else
+                 ("interrupted" if task["phase"] == "interrupted" else "failed") if task["outcome"] == "failed" else task["phase"])
+        task["message"] = auth_db.TASK_PHASE_LABELS.get(phase, "处理失败，请返回工作台重试" if task["outcome"] == "failed" else "处理中")
+    return {"files": files, "tasks": tasks}
+
+
+@app.get("/api/tasks")
+async def account_tasks_status(request: Request):
+    user = _current_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"detail": "请先登录"})
+    response = JSONResponse(content={"user_id": user["id"], "tasks": _account_task_snapshot(user["id"])["tasks"]})
+    response.headers["Cache-Control"] = "private, no-store"
     return response
 
 

@@ -1047,6 +1047,7 @@ def transcribe_video_only(video_info: dict | None = None, progress=gr.Progress()
     started = time.monotonic()
     task = None
     succeeded = False
+    task_outputs = ()
     try:
         media_path, load_error, load_outcome = _load_media_for_processing(user, video_info, progress)
         if not media_path:
@@ -1060,16 +1061,20 @@ def transcribe_video_only(video_info: dict | None = None, progress=gr.Progress()
             auth_db.record_usage("transcribe", platform, "quota")
             return _analysis_result(REPORT_PLACEHOLDER, auth_db.quota_notice(user["id"], "transcribe"))
         task = auth_db.begin_processing_task(user["id"], "transcribe", platform)
+        def transcript_progress(value: float, message: str) -> None:
+            auth_db.update_processing_progress(task, value, "transcribing")
+            progress(value, desc=message)
         with tempfile.TemporaryDirectory(prefix="vp_asr_") as temp_dir:
             cues, transcript_status, warning = transcribe_audio(
                 media_path, media, temp_dir,
-                progress=lambda value, message: progress(value, desc=message),
+                progress=transcript_progress,
             )
         if not cues:
             auth_db.record_usage("transcribe", platform, "failed", "asr_empty", int((time.monotonic() - started) * 1000))
             detail = f"：{warning}" if warning else ""
             return _analysis_result(REPORT_PLACEHOLDER, f"{_asr_status_label(transcript_status)}{detail}")
         readable = format_diarized_transcript(cues)
+        auth_db.update_processing_progress(task, 0.95, "saving")
         text_path, srt_path = _save_asr_exports(
             user["id"], video_info.get("video_id", "video"), cues, transcript_status, readable, [warning] if warning else []
         )
@@ -1079,6 +1084,7 @@ def transcribe_video_only(video_info: dict | None = None, progress=gr.Progress()
         if len(readable) > 12000:
             preview += "\n……（下载 TXT 查看全文）"
         content = f"### ASR 机器转写（未人工校对）\n\n<pre>{preview}</pre>"
+        task_outputs = (text_path, srt_path)
         succeeded = True
         return _analysis_result(content, f"{_asr_status_label(transcript_status)}；共 {len(cues)} 条。{warning or ''}", None, text_path, srt_path)
     except Exception:
@@ -1087,7 +1093,7 @@ def transcribe_video_only(video_info: dict | None = None, progress=gr.Progress()
         return _analysis_result(REPORT_PLACEHOLDER, "转写服务暂时不可用，请稍后重试")
     finally:
         try:
-            auth_db.end_processing_task(task, succeeded=succeeded)
+            auth_db.end_processing_task(task, succeeded=succeeded, outputs=task_outputs)
         finally:
             _TRANSCRIBE_SLOTS.release()
 
@@ -1117,6 +1123,7 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
     started = time.monotonic()
     task = None
     succeeded = False
+    task_outputs = ()
     try:
         cache_path, load_error, load_outcome = _load_media_for_processing(user, video_info, progress)
         if not cache_path:
@@ -1135,6 +1142,7 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
         )
 
         def report_progress(value: float, message: str) -> None:
+            auth_db.update_processing_progress(task, value, "evidence" if value < 0.72 else "analysis")
             progress(value, desc=message)
 
         result, evidence = analyze_video_evidence_first(
@@ -1153,6 +1161,7 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
             f"{len(evidence.subtitles)} 条字幕，ASR：{_asr_status_label(evidence.transcript_status)} {diarize_note}"
         )
         reports_dir = os.path.join(client.download_dir, "reports")
+        auth_db.update_processing_progress(task, 0.95, "saving")
         os.makedirs(reports_dir, exist_ok=True)
         safe_id = "".join(c for c in str(video_id) if c.isalnum())[:30] or "video"
         export_base = f"vp-u{int(user['id'])}-{safe_id}_{int(time.time())}_{secrets.token_hex(6)}"
@@ -1186,6 +1195,7 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
                 status += "；ASR 转写文件保存失败"
         auth_db.record_user_activity(user["id"], "analysis_success")
         auth_db.record_usage("analysis", metric_platform, "success", duration_ms=int((time.monotonic() - started) * 1000))
+        task_outputs = (report_path, asr_text_path, asr_srt_path)
         succeeded = True
         return _analysis_result(result, status, report_path, asr_text_path, asr_srt_path)
 
@@ -1195,7 +1205,7 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
         return _analysis_result(REPORT_PLACEHOLDER, "分析暂时失败，请稍后重试；持续出现时请联系站点管理员")
     finally:
         try:
-            auth_db.end_processing_task(task, succeeded=succeeded)
+            auth_db.end_processing_task(task, succeeded=succeeded, outputs=task_outputs)
         finally:
             _ANALYSIS_SLOTS.release()
 
@@ -1804,7 +1814,7 @@ def create_app():
                 visible=False,
                 elem_id="vp_report_download",
             )
-            gr.HTML('<div class="vp-report-history"><a href="/account/files">查看并评价我的分析文件 →</a></div>')
+            gr.HTML('<div class="vp-report-history"><a href="/account/files">查看任务进度与历史文件 →</a><p>排队或加载视频时请保持页面打开。处理开始后，刷新可在此查进度和取回已保存文件；中断任务需重试。</p></div>')
             with gr.Row():
                 asr_text_output = gr.File(label="下载 ASR 整理稿（TXT）", visible=False)
                 asr_srt_output = gr.File(label="下载 ASR 原始字幕（SRT）", visible=False)
@@ -2132,6 +2142,7 @@ if __name__ == "__main__":
     _auth_on = os.getenv("REQUIRE_AUTH", "1").strip().lower() not in {"0", "false", "no", "off"} or bool(os.getenv("APP_PASS", ""))
     if _auth_on:
         auth_db.init_db()
+        auth_db.recover_interrupted_processing_tasks()
 
     # 缓存策略：页面/API no-store；前端资源 no-cache 回源校验（防"刷新就变"与损坏缓存）
     combined_app = NoCacheMiddleware(combined_app)
