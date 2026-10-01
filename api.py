@@ -439,7 +439,7 @@ async def account_page_view(request: Request):
     return HTMLResponse(auth_pages.account_page(fresh, sessions_active=n, quotas=auth_db.user_daily_quota(user["id"])))
 
 
-_ACCOUNT_FILE_RE = re.compile(r"^vp-u([1-9][0-9]*)-([\w]{1,30})_(\d+)_([0-9a-f]{12})(?:_asr\.(?:txt|srt)|\.md)$")
+_ACCOUNT_FILE_RE = auth_db.REPORT_FILE_RE
 
 
 def _account_report_files(user_id: int) -> list[dict]:
@@ -517,10 +517,12 @@ async def account_file_preview(name: str, request: Request):
         return JSONResponse(status_code=404, content={"detail": "File not found"})
     kind = "分析报告" if name.endswith(".md") else "ASR 整理稿"
     csrf_token = request.cookies.get(auth_db.SESSION_COOKIE, "")
+    feedback = auth_db.get_report_feedback_details(user["id"], name) if name.endswith(".md") else None
     response = HTMLResponse(auth_pages.account_file_preview_page(
         name, kind, raw[:256 * 1024].decode("utf-8", errors="replace"), len(raw) > 256 * 1024,
         csrf_token=csrf_token,
-        feedback_rating=auth_db.get_report_feedback(user["id"], name) if name.endswith(".md") else None,
+        feedback_rating=feedback["rating"] if feedback else None,
+        feedback_reason=feedback["reason"] if feedback else "",
     ))
     response.headers["Cache-Control"] = "private, no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -551,7 +553,10 @@ async def account_file_feedback(request: Request):
         return JSONResponse(status_code=400, content={"detail": "评价无效"})
     if rating not in (-1, 1):
         return JSONResponse(status_code=400, content={"detail": "评价无效"})
-    if not auth_db.set_report_feedback(user["id"], name, rating):
+    reason = str(form.get("reason", ""))
+    if reason not in {"", *auth_db.REPORT_FEEDBACK_REASONS}:
+        return JSONResponse(status_code=400, content={"detail": "评价原因无效"})
+    if not auth_db.set_report_feedback(user["id"], name, rating, reason):
         return JSONResponse(status_code=503, content={"detail": "评价保存失败，请稍后重试"})
     return RedirectResponse(f"/account/files/{quote(name, safe='')}/preview", status_code=303)
 

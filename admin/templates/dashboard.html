@@ -100,11 +100,34 @@
 
 <div class="row row-cards mt-2">
   <div class="col-12"><div class="card">
+    <div class="card-header"><h3 class="card-title">报告与转写导出 · 近 7 天</h3></div>
+    <div class="card-body">
+      {% if e.ready %}
+      <div class="row gy-3">
+        <div class="col-sm-4"><div class="fs-2 fw-bold">{{ e.report_users }}</div><div class="text-muted">下载过分析报告的普通用户</div></div>
+        <div class="col-sm-4"><div class="fs-2 fw-bold">{{ e.asr_users }}</div><div class="text-muted">下载过转写稿或字幕的普通用户</div></div>
+        <div class="col-sm-4"><div class="fs-2 fw-bold">{{ e.useful_users }}</div><div class="text-muted">下载且评价同一报告“有帮助”的普通用户</div></div>
+      </div>
+      <div class="mt-3">去重下载文件：分析报告 <strong>{{ e.report_files }}</strong> 份 · 转写稿/字幕 <strong>{{ e.asr_files }}</strong> 份。</div>
+      <div class="text-muted mt-2">只统计服务器发送完成的 HTTP 200 全文件响应；不统计预览、HEAD、分段下载或失败传输。工作台与资产库共用统计，七日内同一账号下载同一文件只计一份。“有帮助”按报告当前评价匹配，未评价不计入。数据自本版本起记录，不代表浏览器已经保存文件，也不代表真实使用或付费；导出明细只保存文件名摘要，超过 90 天后在下次导出时清理。</div>
+      {% else %}
+      <div class="text-muted">等待主站创建导出统计表；历史生成次数不能作为下载次数。</div>
+      {% endif %}
+    </div>
+  </div></div>
+</div>
+
+<div class="row row-cards mt-2">
+  <div class="col-12"><div class="card">
     <div class="card-header"><h3 class="card-title">报告有用性反馈 · 近 7 天</h3></div>
     <div class="card-body">
       {% if q.ready %}
       <div><strong>{{ q.positive }}</strong> 份“有帮助” · <strong>{{ q.negative }}</strong> 份“需改进” · 好评占比 <strong>{{ q.positive_rate ~ '%' if q.positive_rate is not none else '—' }}</strong></div>
       <div class="text-muted mt-2">仅统计主动评价的报告，一份报告只计当前一次选择；样本量 {{ q.total }}。未评价的报告不计入，不应将此比例理解为所有用户满意度。后台不保存报告文件名、内容或文字评论。</div>
+      {% if q.reasons_ready and q.negative %}
+      <div class="mt-3 fw-bold">需改进的主要原因</div>
+      <ul class="mt-2 mb-0">{% for reason in q.reasons %}<li>{{ reason.label }}：{{ reason.count }} 份</li>{% endfor %}</ul>
+      {% elif not q.reasons_ready %}<div class="text-muted mt-2">旧版评价尚未记录原因，等待主站升级。</div>{% endif %}
       {% else %}
       <div class="text-muted">等待主站创建报告评价数据表。</div>
       {% endif %}

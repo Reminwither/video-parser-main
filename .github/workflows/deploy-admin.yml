@@ -13,8 +13,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    name: Check report metrics before admin release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - run: python3 -m pip install -r ops/validation-requirements.txt
+      - run: python3 -m unittest test_report_metrics
+      - run: python3 -m py_compile admin/app.py
   deploy:
     name: SSH deploy admin (7861, loopback only)
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Check out repo

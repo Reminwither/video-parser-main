@@ -46,6 +46,12 @@ ACTION_QUOTAS = {
     "transcribe": ("语音转写", 5, 30), "analysis": ("AI 分析", 2, 10),
 }
 
+REPORT_FILE_RE = re.compile(r"^vp-u([1-9][0-9]*)-([\w]{1,30})_(\d+)_([0-9a-f]{12})(?:_asr\.(?:txt|srt)|\.md)$")
+REPORT_FEEDBACK_REASONS = {
+    "asr": "语音转写不准确", "timeline": "时间点不准确",
+    "evidence": "结论缺少视频证据", "actionable": "建议不够具体", "other": "其他问题",
+}
+
 # SQLite 跨线程：每线程独立连接（threading.local 保存，避免
 # "SQLite objects created in a thread" —— 曾把连接缓存在函数对象上导致
 # 登录后的业务线程直接抛错）
@@ -193,6 +199,13 @@ def init_db() -> None:
                 PRIMARY KEY (user_id, report_key)
             );
             CREATE INDEX IF NOT EXISTS idx_report_feedback_updated ON report_feedback(updated_at);
+            CREATE TABLE IF NOT EXISTS artifact_exports (
+                day TEXT NOT NULL,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                report_key TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('report', 'asr')),
+                PRIMARY KEY(day, user_id, report_key)
+            );
             CREATE TABLE IF NOT EXISTS uploaded_files (
                 path TEXT NOT NULL,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -202,6 +215,8 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_uploaded_files_created ON uploaded_files(created_at);
             """
         )
+        if "reason" not in {row["name"] for row in c.execute("PRAGMA table_info(report_feedback)")}:
+            c.execute("ALTER TABLE report_feedback ADD COLUMN reason TEXT NOT NULL DEFAULT ''")
         c.commit()
     seed_admin_if_empty()
 
@@ -313,34 +328,72 @@ def record_user_activity(user_id: int, action: str) -> None:
         _LOG.exception("Unable to record user activity")
 
 
-def get_report_feedback(user_id: int, filename: str) -> int | None:
+def record_artifact_export(user_id: int, filename: str) -> None:
+    """Count a completed full-file response once per user/file/UTC day.
+
+    Filenames are hashed, never stored. This proves server delivery, not that a
+    browser saved the file or the reader used it. The caller validates delivery.
+    """
+    match = REPORT_FILE_RE.fullmatch(filename)
+    if not match or int(match.group(1)) != int(user_id):
+        return
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    kind = "report" if filename.endswith(".md") else "asr"
+    report_key = hashlib.sha256(filename.encode("utf-8")).hexdigest()
+    try:
+        with _DB_LOCK:
+            c = _db()
+            with c:
+                inserted = c.execute(
+                    "INSERT OR IGNORE INTO artifact_exports(day,user_id,report_key,kind) VALUES (?,?,?,?)",
+                    (day, int(user_id), report_key, kind),
+                ).rowcount
+                if inserted:
+                    c.execute(
+                        "INSERT INTO user_activity(day,user_id,action,count) VALUES (?,?,?,1) "
+                        "ON CONFLICT(day,user_id,action) DO UPDATE SET count=count+1",
+                        (day, int(user_id), f"{kind}_export"),
+                    )
+                c.execute("DELETE FROM artifact_exports WHERE day < date(?, '-90 days')", (day,))
+    except (sqlite3.Error, TypeError, ValueError):
+        _LOG.exception("Unable to record artifact export")
+
+
+def get_report_feedback_details(user_id: int, filename: str) -> dict | None:
     """Read a user's rating by a one-way key; filenames and content are not stored."""
     report_key = hashlib.sha256(filename.encode("utf-8")).hexdigest()
     try:
         with _DB_LOCK:
             row = _db().execute(
-                "SELECT rating FROM report_feedback WHERE user_id=? AND report_key=?",
+                "SELECT rating, reason FROM report_feedback WHERE user_id=? AND report_key=?",
                 (int(user_id), report_key),
             ).fetchone()
-        return int(row["rating"]) if row else None
+        return {"rating": int(row["rating"]), "reason": row["reason"]} if row else None
     except (sqlite3.Error, TypeError, ValueError):
         _LOG.exception("Unable to read report feedback")
         return None
 
 
-def set_report_feedback(user_id: int, filename: str, rating: int) -> bool:
+def get_report_feedback(user_id: int, filename: str) -> int | None:
+    feedback = get_report_feedback_details(user_id, filename)
+    return feedback["rating"] if feedback else None
+
+
+def set_report_feedback(user_id: int, filename: str, rating: int, reason: str = "") -> bool:
     """Store a rating after the caller validates report ownership."""
-    if rating not in (-1, 1):
+    if rating not in (-1, 1) or reason not in {"", *REPORT_FEEDBACK_REASONS}:
         return False
+    if rating == 1:
+        reason = ""
     report_key = hashlib.sha256(filename.encode("utf-8")).hexdigest()
     try:
         with _DB_LOCK:
             c = _db()
             c.execute(
-                "INSERT INTO report_feedback(report_key,user_id,rating,updated_at) VALUES (?,?,?,?) "
+                "INSERT INTO report_feedback(report_key,user_id,rating,updated_at,reason) VALUES (?,?,?,?,?) "
                 "ON CONFLICT(user_id,report_key) DO UPDATE SET "
-                "rating=excluded.rating, updated_at=excluded.updated_at",
-                (report_key, int(user_id), rating, _now_iso()),
+                "rating=excluded.rating, updated_at=excluded.updated_at, reason=excluded.reason",
+                (report_key, int(user_id), rating, _now_iso(), reason),
             )
             c.commit()
         return True

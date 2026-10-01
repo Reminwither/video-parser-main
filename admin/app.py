@@ -26,6 +26,7 @@ import json
 import re
 import threading
 import shutil
+from contextlib import closing
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import unquote
@@ -347,9 +348,38 @@ def get_funnel_stats():
     return data
 
 
+def get_export_stats():
+    """Server-completed full downloads, with exact-file usefulness matching."""
+    data = {"ready": False, "report_users": 0, "asr_users": 0,
+            "useful_users": 0, "report_files": 0, "asr_files": 0}
+    try:
+        with closing(ro_conn()) as c:
+            rows = c.execute(
+                "SELECT e.kind, COUNT(DISTINCT e.user_id), "
+                "COUNT(DISTINCT CAST(e.user_id AS TEXT) || ':' || e.report_key) "
+                "FROM artifact_exports e JOIN users u ON u.id=e.user_id "
+                "WHERE u.is_admin=0 AND e.day>=date('now','-6 days') GROUP BY e.kind"
+            ).fetchall()
+            data["useful_users"] = c.execute(
+                "SELECT COUNT(DISTINCT e.user_id) FROM artifact_exports e "
+                "JOIN users u ON u.id=e.user_id JOIN report_feedback f "
+                "ON f.user_id=e.user_id AND f.report_key=e.report_key "
+                "WHERE u.is_admin=0 AND e.day>=date('now','-6 days') "
+                "AND e.kind='report' AND f.rating=1"
+            ).fetchone()[0]
+        for kind, users, files in rows:
+            data[f"{kind}_users"] = users
+            data[f"{kind}_files"] = files
+        data["ready"] = True
+    except sqlite3.Error:
+        pass
+    return data
+
+
 def get_feedback_stats():
     """Seven-day report ratings from active non-admin accounts."""
-    data = {"ready": False, "positive": 0, "negative": 0, "total": 0, "positive_rate": None}
+    data = {"ready": False, "positive": 0, "negative": 0, "total": 0,
+            "positive_rate": None, "reasons": [], "reasons_ready": False}
     try:
         c = ro_conn()
         rows = c.execute(
@@ -357,6 +387,21 @@ def get_feedback_stats():
             "WHERE u.is_admin=0 AND substr(f.updated_at,1,10)>=date('now','-6 days') "
             "GROUP BY f.rating"
         ).fetchall()
+        # Admin may deploy before the main site's backward-compatible migration.
+        if "reason" in {row[1] for row in c.execute("PRAGMA table_info(report_feedback)")}:
+            reason_labels = {
+                "asr": "语音转写不准确", "timeline": "时间点不准确",
+                "evidence": "结论缺少视频证据", "actionable": "建议不够具体",
+                "other": "其他问题", "": "未选原因",
+            }
+            reason_rows = c.execute(
+                "SELECT f.reason, COUNT(*) FROM report_feedback f JOIN users u ON u.id=f.user_id "
+                "WHERE u.is_admin=0 AND f.rating=-1 AND substr(f.updated_at,1,10)>=date('now','-6 days') "
+                "GROUP BY f.reason ORDER BY COUNT(*) DESC, f.reason"
+            ).fetchall()
+            data["reasons"] = [{"label": reason_labels.get(reason, "其他问题"), "count": count}
+                               for reason, count in reason_rows]
+            data["reasons_ready"] = True
         c.close()
     except sqlite3.Error:
         return data
@@ -568,7 +613,7 @@ def logout():
 @require_admin
 def dashboard():
     return render_template("dashboard.html", s=get_stats(), m=get_usage_stats(), r=get_resource_stats(),
-                           f=get_funnel_stats(), q=get_feedback_stats(),
+                           f=get_funnel_stats(), q=get_feedback_stats(), e=get_export_stats(),
                            user=flask_session.get("admin_user"))
 
 

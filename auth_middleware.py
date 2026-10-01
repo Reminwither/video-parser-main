@@ -114,6 +114,18 @@ def _upload_response_paths(body: bytes) -> list[str]:
     return paths
 
 
+def _export_filename(path: str, user_id: int) -> str | None:
+    """Recognize the two download entry points, excluding previews and videos."""
+    if path.startswith(("/gradio_api/file=", "/file=")):
+        name = unquote(path.split("file=", 1)[1]).replace("\\", "/").rsplit("/", 1)[-1]
+    elif path.startswith("/account/files/"):
+        name = path.removeprefix("/account/files/")
+    else:
+        return None
+    match = auth_db.REPORT_FILE_RE.fullmatch(name)
+    return name if match and int(match.group(1)) == int(user_id) else None
+
+
 class SessionAuthMiddleware:
     def __init__(self, app: ASGIApp):
         self.app = app
@@ -177,6 +189,23 @@ class SessionAuthMiddleware:
                     await send(message)
 
                 await self.app(scope, receive, record_upload)
+            elif scope.get("type") == "http" and scope.get("method") == "GET" and (filename := _export_filename(path, session["id"])):
+                status = 0
+                finished = False
+
+                async def track_export(message):
+                    nonlocal status, finished
+                    await send(message)
+                    if message["type"] == "http.response.start":
+                        status = message["status"]
+                    elif message["type"] == "http.response.body" and not message.get("more_body", False):
+                        finished = True
+
+                await self.app(scope, receive, track_export)
+                # Partial/range responses, HEAD probes and failed sends do not
+                # prove full delivery. Telemetry never buffers the report body.
+                if status == 200 and finished:
+                    auth_db.record_artifact_export(session["id"], filename)
             else:
                 await self.app(scope, receive, send)
             return

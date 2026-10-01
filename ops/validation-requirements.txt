@@ -1,0 +1,3 @@
+# Minimal dependencies for release checks; matches the validated local runtime.
+Flask==3.1.3
+starlette==1.6.0
