@@ -20,6 +20,8 @@ import hmac
 import logging
 import threading
 import time
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 
 # ==================== 配置 ====================
@@ -58,6 +60,15 @@ REPORT_FEEDBACK_REASONS = {
 _DB_LOCK = threading.Lock()
 _DB_LOCAL = threading.local()
 _LOG = logging.getLogger(__name__)
+_RESOURCE_TASK = ContextVar("vp_resource_task", default=None)
+
+
+@dataclass
+class ProcessingTask:
+    task_id: str
+    token: object
+    started: float
+    closed: bool = False
 
 
 def _now_iso() -> str:
@@ -182,6 +193,31 @@ def init_db() -> None:
                 output_tokens INTEGER NOT NULL DEFAULT 0,
                 submitted_audio_ms INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (day, provider, operation, model)
+            );
+            CREATE TABLE IF NOT EXISTS processing_tasks (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                day TEXT NOT NULL,
+                action TEXT NOT NULL CHECK(action IN ('analysis','transcribe')),
+                platform TEXT NOT NULL,
+                outcome TEXT NOT NULL CHECK(outcome IN ('running','success','failed')),
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                duration_ms INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_processing_tasks_day ON processing_tasks(day);
+            CREATE TABLE IF NOT EXISTS task_resource_usage (
+                task_id TEXT NOT NULL REFERENCES processing_tasks(id) ON DELETE CASCADE,
+                provider TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                model TEXT NOT NULL,
+                calls INTEGER NOT NULL DEFAULT 0,
+                failed_calls INTEGER NOT NULL DEFAULT 0,
+                missing_token_usage_calls INTEGER NOT NULL DEFAULT 0,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                submitted_audio_ms INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(task_id,provider,operation,model)
             );
             CREATE TABLE IF NOT EXISTS user_activity (
                 day TEXT NOT NULL,
@@ -402,6 +438,48 @@ def set_report_feedback(user_id: int, filename: str, rating: int, reason: str = 
         return False
 
 
+def begin_processing_task(user_id: int, action: str, platform: str) -> ProcessingTask | None:
+    """Attribute provider units only after a processing task passes its guards."""
+    if action not in {"analysis", "transcribe"}:
+        return None
+    platform = platform if platform in {"抖音", "哔哩哔哩", "小红书", "视频号", "自有视频", "上传"} else "其他"
+    task_id = secrets.token_hex(16)
+    try:
+        with _DB_LOCK:
+            c = _db()
+            with c:
+                c.execute("DELETE FROM processing_tasks WHERE day < date('now','-90 days')")
+                c.execute(
+                    "INSERT INTO processing_tasks(id,user_id,day,action,platform,outcome,started_at) "
+                    "VALUES (?,?,?,?,?,'running',?)",
+                    (task_id, int(user_id), datetime.now(timezone.utc).strftime("%Y-%m-%d"), action, platform, _now_iso()),
+                )
+        return ProcessingTask(task_id, _RESOURCE_TASK.set(task_id), time.monotonic())
+    except (sqlite3.Error, TypeError, ValueError):
+        _LOG.exception("Unable to start processing attribution")
+        return None
+
+
+def end_processing_task(task: ProcessingTask | None, *, succeeded: bool) -> None:
+    if task is None or task.closed:
+        return
+    try:
+        with _DB_LOCK:
+            c = _db()
+            with c:
+                c.execute(
+                    "UPDATE processing_tasks SET outcome=?,finished_at=?,duration_ms=? "
+                    "WHERE id=? AND outcome='running'",
+                    ("success" if succeeded else "failed", _now_iso(),
+                     max(0, int((time.monotonic() - task.started) * 1000)), task.task_id),
+                )
+    except sqlite3.Error:
+        _LOG.exception("Unable to finish processing attribution")
+    finally:
+        _RESOURCE_TASK.reset(task.token)
+        task.closed = True
+
+
 def record_resource_usage(
     provider: str, operation: str, model: str, *, failed: bool = False,
     input_tokens: int | None = None, output_tokens: int | None = None,
@@ -421,6 +499,9 @@ def record_resource_usage(
     try:
         with _DB_LOCK:
             c = _db()
+            values = (provider, operation, model, int(failed), int(missing),
+                      max(0, int(input_tokens or 0)), max(0, int(output_tokens or 0)),
+                      max(0, int(submitted_audio_ms)))
             c.execute(
                 "INSERT INTO resource_usage(day, provider, operation, model, calls, failed_calls, "
                 "missing_token_usage_calls, input_tokens, output_tokens, submitted_audio_ms) "
@@ -431,12 +512,26 @@ def record_resource_usage(
                 "input_tokens = input_tokens + excluded.input_tokens, "
                 "output_tokens = output_tokens + excluded.output_tokens, "
                 "submitted_audio_ms = submitted_audio_ms + excluded.submitted_audio_ms",
-                (day, provider, operation, model, int(failed), int(missing),
-                 max(0, int(input_tokens or 0)), max(0, int(output_tokens or 0)),
-                 max(0, int(submitted_audio_ms))),
+                (day, *values),
             )
+            task_id = _RESOURCE_TASK.get()
+            if task_id:
+                c.execute(
+                    "INSERT INTO task_resource_usage(task_id,provider,operation,model,calls,failed_calls,"
+                    "missing_token_usage_calls,input_tokens,output_tokens,submitted_audio_ms) "
+                    "SELECT ?,?,?,?,1,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM processing_tasks WHERE id=?) "
+                    "ON CONFLICT(task_id,provider,operation,model) DO UPDATE SET "
+                    "calls=calls+1,failed_calls=failed_calls+excluded.failed_calls,"
+                    "missing_token_usage_calls=missing_token_usage_calls+excluded.missing_token_usage_calls,"
+                    "input_tokens=input_tokens+excluded.input_tokens,output_tokens=output_tokens+excluded.output_tokens,"
+                    "submitted_audio_ms=submitted_audio_ms+excluded.submitted_audio_ms",
+                    (task_id, *values, task_id),
+                )
             c.commit()
     except (sqlite3.Error, TypeError, ValueError):
+        # Never leave a partial global/task transaction open in a worker thread.
+        if 'c' in locals():
+            c.rollback()
         _LOG.exception("Unable to record resource usage")
 
 

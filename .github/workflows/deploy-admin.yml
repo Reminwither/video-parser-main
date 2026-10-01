@@ -10,6 +10,7 @@ name: Deploy video-parser admin
       - 'ops/validation-requirements.txt'
       - 'test_admin_release.py'
       - 'test_report_metrics.py'
+      - 'test_task_usage.py'
   workflow_dispatch:
 
 concurrency:
@@ -25,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: python3 -m pip install -r ops/validation-requirements.txt
-      - run: python3 -m unittest test_report_metrics test_admin_release
+      - run: python3 -m unittest test_report_metrics test_admin_release test_task_usage
       - run: bash -n ops/deploy-admin-container.sh
       - run: python3 -m py_compile admin/app.py
   deploy:

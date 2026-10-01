@@ -470,6 +470,47 @@ def get_resource_stats():
     return data
 
 
+def get_task_resource_stats():
+    """Average units per finished task, without multiplying tasks by calls."""
+    data = {"ready": False, "rows": [], "stale": 0}
+    try:
+        with closing(ro_conn()) as c:
+            rows = c.execute(
+                "SELECT t.action,t.outcome,COUNT(*),SUM(t.duration_ms),"
+                "SUM(COALESCE(r.model_calls,0)),SUM(COALESCE(r.model_failed,0)),"
+                "SUM(COALESCE(r.missing,0)),SUM(COALESCE(r.input_tokens,0)),"
+                "SUM(COALESCE(r.output_tokens,0)),SUM(COALESCE(r.audio_ms,0)),"
+                "SUM(COALESCE(r.asr_failed,0)) "
+                "FROM processing_tasks t JOIN users u ON u.id=t.user_id LEFT JOIN ("
+                "SELECT task_id, SUM(CASE WHEN provider='model-api' THEN calls ELSE 0 END) model_calls,"
+                "SUM(CASE WHEN provider='model-api' THEN failed_calls ELSE 0 END) model_failed,"
+                "SUM(missing_token_usage_calls) missing,SUM(input_tokens) input_tokens,"
+                "SUM(output_tokens) output_tokens,SUM(submitted_audio_ms) audio_ms,"
+                "SUM(CASE WHEN provider='tencent-asr' THEN failed_calls ELSE 0 END) asr_failed "
+                "FROM task_resource_usage GROUP BY task_id) r ON r.task_id=t.id "
+                "WHERE u.is_admin=0 AND t.day>=date('now','-6 days') "
+                "GROUP BY t.action,t.outcome ORDER BY t.action,t.outcome"
+            ).fetchall()
+            data["stale"] = c.execute(
+                "SELECT COUNT(*) FROM processing_tasks t JOIN users u ON u.id=t.user_id "
+                "WHERE u.is_admin=0 AND t.day>=date('now','-6 days') AND t.outcome='running' "
+                "AND julianday(t.started_at)<julianday('now','-2 hours')"
+            ).fetchone()[0]
+        actions = {"analysis": "AI 分析", "transcribe": "独立转写"}
+        outcomes = {"running": "尚未结束", "success": "成功", "failed": "失败"}
+        for action, outcome, tasks, ms, calls, failed, missing, inputs, outputs, audio, asr_failed in rows:
+            data["rows"].append({"action": actions[action], "outcome": outcomes[outcome], "tasks": tasks,
+                                 "avg_seconds": round(ms / tasks / 1000, 1) if outcome != "running" else None,
+                                 "avg_calls": round(calls / tasks, 2), "model_failed": failed,
+                                 "missing": missing, "asr_failed": asr_failed,
+                                 "avg_input": round(inputs / tasks), "avg_output": round(outputs / tasks),
+                                 "avg_audio_minutes": round(audio / tasks / 60000, 3)})
+        data["ready"] = True
+    except sqlite3.Error:
+        pass
+    return data
+
+
 def get_users():
     now = int(time.time())
     try:
@@ -613,7 +654,7 @@ def logout():
 @require_admin
 def dashboard():
     return render_template("dashboard.html", s=get_stats(), m=get_usage_stats(), r=get_resource_stats(),
-                           f=get_funnel_stats(), q=get_feedback_stats(), e=get_export_stats(),
+                           f=get_funnel_stats(), q=get_feedback_stats(), e=get_export_stats(), t=get_task_resource_stats(),
                            user=flask_session.get("admin_user"))
 
 

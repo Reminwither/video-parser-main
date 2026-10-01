@@ -28,7 +28,7 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run test:auth
       - run: python3 -m pip install -r ops/validation-requirements.txt
-      - run: python3 -m unittest test_quota_display test_auth_payload test_report_metrics test_private_files
+      - run: python3 -m unittest test_quota_display test_auth_payload test_report_metrics test_private_files test_task_usage test_processing_attribution
       - run: python3 -m py_compile app.py api.py auth_pages.py auth_db.py auth_middleware.py
   deploy:
     name: SSH deploy & restart service
