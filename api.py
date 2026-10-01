@@ -372,9 +372,13 @@ async def api_register(request: Request):
             "retcode": 400, "succ": False, "retdesc": "请求格式错误",
         })
 
-    username = str((data or {}).get("username", "")).strip()
-    password = str((data or {}).get("password", ""))
-    password2 = str((data or {}).get("password2", ""))
+    if not auth_db.valid_auth_payload(data):
+        return JSONResponse(status_code=400, content={
+            "retcode": 400, "succ": False, "retdesc": "请求格式错误",
+        })
+    username = data["username"].strip()
+    password = data["password"]
+    password2 = data.get("password2", "")
     if not username or not password:
         return JSONResponse(status_code=400, content={
             "retcode": 400, "succ": False, "retdesc": "请输入用户名和密码",
@@ -656,8 +660,11 @@ async def api_login(request: Request):
     except Exception:
         return JSONResponse(status_code=400,
                             content={"retcode": 400, "succ": False, "retdesc": "请求格式错误"})
-    username = str((data or {}).get("username", "")).strip()
-    password = str((data or {}).get("password", ""))
+    if not auth_db.valid_auth_payload(data):
+        return JSONResponse(status_code=400,
+                            content={"retcode": 400, "succ": False, "retdesc": "请求格式错误"})
+    username = data["username"].strip()
+    password = data["password"]
     ip = get_client_ip(request.scope)
 
     if not username or not password:

@@ -12,6 +12,7 @@
 ## 当前部署
 
 - GitHub master 推送触发 .github/workflows/deploy.yml；服务器代码位于 /opt/video-parser，镜像在本机构建。
+- 主站与后台发布分别读取服务器仓库的提交基线，兼容时只传缺失的 Git 历史；首次部署、基线缺失、不同历史或同版本重建均回退全量。传输前和导入前验证 bundle，SSH 保留固定主机指纹并设置连接超时。
 - Caddy 对外监听 80/443，80 保留证书签发挑战并将其余请求重定向到 HTTPS。主站容器只绑定 127.0.0.1:7860。
 - 管理后台容器只绑定 127.0.0.1:7861，由 Caddy 在 https://110.40.138.167/admin/ 提供 HTTPS 入口。使用现有管理员账号登录。
 - 腾讯云防火墙已删除旧的 TCP 7860 公网放行规则，保留 80/443 与 SSH。原有的 18888 规则未改动；当前没有进程监听该端口，其用途还需确认。
@@ -28,4 +29,4 @@
 
 历史上曾通过 http://110.40.138.167:7860 直连；该入口已停用。域名购入后，可将 Caddy 与 DOMAIN 改为域名，并切换到常规自动 HTTPS 证书。
 
-主站部署前会运行 `npm ci --ignore-scripts`、`npm run test:auth`、`python3 -m unittest test_quota_display` 和 Python 语法检查。认证弹窗的 DOM 行为检查使用 Node.js 24.16.0 和 jsdom；它不测布局，不发生产请求，也不处理用户凭据。
+主站部署前会运行 `npm ci --ignore-scripts`、`npm run test:auth`、`python3 -m unittest test_quota_display test_auth_payload` 和 Python 语法检查。认证弹窗的 DOM 行为检查使用 Node.js 24.16.0 和 jsdom；它不测布局，不发生产请求，也不处理用户凭据。

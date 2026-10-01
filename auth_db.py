@@ -87,6 +87,15 @@ def _db() -> sqlite3.Connection:
 
 # ==================== 口令哈希 ====================
 
+def valid_auth_payload(data: object) -> bool:
+    """Check JSON credential types without changing values or account policy."""
+    return (
+        isinstance(data, dict)
+        and all(isinstance(data.get(field), str) for field in ("username", "password"))
+        and ("password2" not in data or isinstance(data["password2"], str))
+    )
+
+
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PBKDF2_ITERATIONS)
