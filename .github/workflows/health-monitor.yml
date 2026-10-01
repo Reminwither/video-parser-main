@@ -19,6 +19,19 @@ jobs:
           base="https://110.40.138.167"
           options=(--silent --show-error --retry 2 --retry-delay 5 --retry-all-errors --max-time 15)
 
+          # Short-lived IP certificates need notice before browsers reject them.
+          python3 - <<'PY'
+          import datetime, socket, ssl, time
+          host = "110.40.138.167"
+          with socket.create_connection((host, 443), timeout=15) as connection:
+              with ssl.create_default_context().wrap_socket(connection, server_hostname=host) as secured:
+                  expires = ssl.cert_time_to_seconds(secured.getpeercert()["notAfter"])
+          remaining = expires - time.time()
+          print("HTTPS certificate expires:", datetime.datetime.fromtimestamp(expires, datetime.timezone.utc).isoformat())
+          if remaining < 24 * 3600:
+              raise SystemExit("HTTPS certificate has less than 24 hours remaining; check renewal and proxy reload")
+          PY
+
           curl "${options[@]}" --fail "$base/health" |
             python3 -c 'import json,sys; assert json.load(sys.stdin).get("status") == "healthy"'
           curl "${options[@]}" --fail "$base/admin/health" |

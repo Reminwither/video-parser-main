@@ -9,6 +9,34 @@
 
 import html as _html
 
+
+def workspace_auth_modal(register_enabled: bool) -> str:
+    """Accessible form used by the workspace's sign-in/sign-up dialog."""
+    return f"""
+    <div id="vp-login-modal" class="vp-modal-mask" aria-hidden="true" data-register-enabled="{str(register_enabled).lower()}">
+      <div class="vp-modal-card" role="dialog" aria-modal="true" aria-labelledby="vp-modal-title" aria-describedby="vp-modal-sub" tabindex="-1">
+        <button id="vp-modal-close" class="vp-modal-x" type="button" aria-label="关闭">&times;</button>
+        <div class="vp-modal-brand"><span class="vp-modal-logo">VA</span>VidAI</div>
+        <h2 id="vp-modal-title" class="vp-modal-title">登录工作台</h2>
+        <p id="vp-modal-sub" class="vp-modal-sub">视频解析 · AI 分析 · 多模态取证</p>
+        <form id="vp-modal-form" method="post" action="/login" novalidate>
+          <label for="vp-modal-user" class="vp-modal-label">用户名</label>
+          <input id="vp-modal-user" name="username" class="vp-modal-input" type="text" placeholder="用户名" autocomplete="username" autocapitalize="none" spellcheck="false" required />
+          <label for="vp-modal-pass" class="vp-modal-label">密码</label>
+          <input id="vp-modal-pass" name="password" class="vp-modal-input" type="password" placeholder="密码" autocomplete="current-password" required />
+          <div id="vp-modal-confirm" hidden>
+            <label for="vp-modal-pass2" class="vp-modal-label">确认密码</label>
+            <input id="vp-modal-pass2" name="password2" class="vp-modal-input" type="password" placeholder="确认密码" autocomplete="new-password" disabled />
+          </div>
+          <p id="vp-modal-register-hint" class="vp-modal-hint" hidden>用户名需为 3–32 位字母、数字、下划线或连字符；密码至少 8 位。</p>
+          <button id="vp-modal-submit" class="vp-modal-btn" type="submit">登录</button>
+          <div id="vp-modal-msg" class="vp-modal-msg" role="alert" aria-atomic="true"></div>
+        </form>
+        <div class="vp-modal-foot"><span id="vp-modal-foot-pre">没有账号？</span><a id="vp-modal-toggle" href="/register">立即注册</a></div>
+      </div>
+    </div>
+    """
+
 # 公共样式与主题脚本（页面间共享）
 _COMMON_STYLE = """
 :root { color-scheme: light; }

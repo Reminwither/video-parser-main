@@ -1,6 +1,7 @@
 .git
 .github
 .venv
+node_modules
 .runtime_py311
 __pycache__
 *.pyc
