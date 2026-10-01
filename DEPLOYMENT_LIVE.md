@@ -32,3 +32,5 @@
 主站部署前会运行 `npm ci --ignore-scripts`、`npm run test:auth`、安装 `ops/validation-requirements.txt` 后执行 `python3 -m unittest test_quota_display test_auth_payload test_report_metrics test_private_files`，并检查 Python 语法。后台部署前也执行报告统计检查和语法检查。认证弹窗的 DOM 行为检查使用 Node.js 24.16.0 和 jsdom；它不测布局，不发生产请求，也不处理用户凭据。报告统计检查使用隔离内存数据库与实际 ASGI 中间件和后台路由，覆盖旧表升级、导出去重、中断传输、反馈更新和账号删除。
 
 后台部署通过 `ops/deploy-admin-container.sh` 先构建候选镜像，再重建容器；检查本机数据库健康、登录入口、匿名看板重定向及公网 HTTPS。启动或验证失败时恢复部署前的确切镜像 ID；构建失败不停止现有容器。首次部署没有可恢复镜像时会明确报错。4 项 Bash 故障演练使用模拟 Docker/HTTP，覆盖成功、构建失败、启动/健康/访问边界失败和恢复失败，并加入后台发布门槛。
+
+2026-10-01 代码 `dc81588` 的主站发布 `36878365247` 与后台发布 `36878365282` 已通过；公网用三个临时账号完成 33 项报告下载/反馈/后台指标/账号删除检查后清理数据。本轮的 46 项不同自动检查与真实 HTTP 验收均通过；手机视觉及软键盘体验仍未验证，本轮未重新调用 AI/ASR。
