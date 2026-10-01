@@ -2,6 +2,7 @@
 import ast
 import hashlib
 import json
+from html.parser import HTMLParser
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -152,6 +153,19 @@ class TaskHistoryTests(unittest.TestCase):
         self.assertEqual(self.snapshot([file], uid=2)["tasks"], [])
         self.assertNotIn("<script>bad</script>", auth_pages.processing_task_cards(snapshot["tasks"]))
         self.assertIn("下载分析报告", auth_pages.processing_task_cards(snapshot["tasks"]))
+
+    def test_workspace_history_opens_new_page_and_preserves_processing_workbench(self):
+        tree = ast.parse(Path(__file__).with_name("app.py").read_text(encoding="utf-8"))
+        markup = next(n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and 'class="vp-report-history"' in n.value)
+        attrs = []
+        class LinkParser(HTMLParser):
+            def handle_starttag(self, tag, attributes):
+                if tag == "a": attrs.append(dict(attributes))
+        LinkParser().feed(markup)
+        self.assertEqual(attrs[0]["href"], "/account/files")
+        self.assertEqual(attrs[0]["target"], "_blank")
+        self.assertIn("noopener", attrs[0]["rel"])
+        self.assertIn("新页面", markup)
 
 
 if __name__ == "__main__": unittest.main()

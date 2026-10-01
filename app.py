@@ -1814,7 +1814,7 @@ def create_app():
                 visible=False,
                 elem_id="vp_report_download",
             )
-            gr.HTML('<div class="vp-report-history"><a href="/account/files">查看任务进度与历史文件 →</a><p>排队或加载视频时请保持页面打开。处理开始后，刷新可在此查进度和取回已保存文件；中断任务需重试。</p></div>')
+            gr.HTML('<div class="vp-report-history"><a href="/account/files" target="_blank" rel="noopener">查看任务进度与历史文件（新页面） →</a><p>排队或加载视频时请保持工作台打开。处理开始后可在任务页查进度和取回已保存文件；中断任务需重试。</p></div>')
             with gr.Row():
                 asr_text_output = gr.File(label="下载 ASR 整理稿（TXT）", visible=False)
                 asr_srt_output = gr.File(label="下载 ASR 原始字幕（SRT）", visible=False)
