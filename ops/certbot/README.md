@@ -58,6 +58,15 @@ SESSION_COOKIE_SECURE=1
 
 This server uses a pip-installed Certbot, so install and enable the included twice-daily systemd timer (`video-parser-certbot-renew.timer`). Confirm it is active and that the deploy hook is recorded in the renewal config. Run `certbot renew --dry-run` once after setup. The normal renewal must run at least daily because the IP certificate lifetime is only about six days.
 
+The deploy hook uses `caddy reload --force`: the Caddyfile itself stays unchanged
+when a file-backed certificate renews, so an ordinary reload can leave the old
+certificate in memory. The hook then compares the certificate served on local
+port 443 with the installed certificate and exits unsuccessfully if they differ.
+For a different server address, set `VIDEO_PARSER_CERT_HOST` in the renewal
+service environment. Verify the certificate from outside the server as well;
+the public monitor checks CA trust, the IP identity, and a 24-hour expiry margin.
+See [Caddy's reload documentation](https://caddyserver.com/docs/command-line#caddy-reload).
+
 ## 4. Close direct application ports
 
 After `https://110.40.138.167/health` works and the login cookie is marked `Secure`, remove public firewall rules for 7860 and 7861. Keep 80 and 443 open. The application deployment workflow checks the HTTPS endpoint before it replaces the running container.

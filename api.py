@@ -342,7 +342,7 @@ async def register_submit(request: Request):
         return fail("两次输入的密码不一致")
     ip = get_client_ip(request.scope)
     if not auth_db.consume_daily_quota(f"ip:{ip}", "register", max(1, int(os.getenv("REGISTER_PER_IP_DAILY", "3")))):
-        return fail("今日注册次数已达上限，请明天再试")
+        return fail("注册次数已达上限，每日北京时间 08:00 重置")
     try:
         user_id = auth_db.create_user(username, password)
     except auth_db.AuthError as e:
@@ -389,7 +389,7 @@ async def api_register(request: Request):
         f"ip:{ip}", "register", max(1, int(os.getenv("REGISTER_PER_IP_DAILY", "3")))
     ):
         return JSONResponse(status_code=429, content={
-            "retcode": 429, "succ": False, "retdesc": "今日注册次数已达上限，请明天再试",
+            "retcode": 429, "succ": False, "retdesc": "注册次数已达上限，每日北京时间 08:00 重置",
         })
     try:
         user_id = auth_db.create_user(username, password)
@@ -432,7 +432,7 @@ async def account_page_view(request: Request):
             "SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND expires_at > ?",
             (user["id"], auth_db._now()),
         ).fetchone()["n"]
-    return HTMLResponse(auth_pages.account_page(fresh, sessions_active=n))
+    return HTMLResponse(auth_pages.account_page(fresh, sessions_active=n, quotas=auth_db.user_daily_quota(user["id"])))
 
 
 _ACCOUNT_FILE_RE = re.compile(r"^vp-u([1-9][0-9]*)-([\w]{1,30})_(\d+)_([0-9a-f]{12})(?:_asr\.(?:txt|srt)|\.md)$")
@@ -597,7 +597,7 @@ async def change_password_submit(request: Request):
         auth_db.change_password(user["id"], old_password, new_password)
     except auth_db.AuthError as e:
         fresh = auth_db.get_user_by_id(user["id"]) or user
-        return HTMLResponse(auth_pages.account_page(fresh, error=str(e)))
+        return HTMLResponse(auth_pages.account_page(fresh, error=str(e), quotas=auth_db.user_daily_quota(user["id"])))
     logger.info(f"密码已修改并吊销全部会话: {user['username']}")
     # change_password 已吊销全部会话，回登录页重新登录
     resp = RedirectResponse("/login", status_code=303)
@@ -612,11 +612,11 @@ async def delete_account_submit(request: Request):
         return RedirectResponse("/login?next=/account", status_code=302)
     form = await request.form()
     if str(form.get("confirm", "")) != "删除":
-        return HTMLResponse(auth_pages.account_page(user, error="请输入“删除”确认操作"))
+        return HTMLResponse(auth_pages.account_page(user, error="请输入“删除”确认操作", quotas=auth_db.user_daily_quota(user["id"])))
     try:
         auth_db.delete_user_account(user["id"], str(form.get("password", "")))
     except auth_db.AuthError as e:
-        return HTMLResponse(auth_pages.account_page(user, error=str(e)))
+        return HTMLResponse(auth_pages.account_page(user, error=str(e), quotas=auth_db.user_daily_quota(user["id"])))
     logger.info("用户账号已自行删除: id=%s", user["id"])
     resp = RedirectResponse("/", status_code=303)
     resp.delete_cookie(auth_db.SESSION_COOKIE, path="/")

@@ -17,7 +17,7 @@
       usernameRule: '用户名需为 3–32 位字母、数字、下划线或连字符', passwordRule: '密码至少 8 位',
       network: '网络连接失败，请重试', timeout: '请求超时，请重试', registerTimeout: '请求超时；若账号已创建，请先尝试用此账号登录',
       failed: '操作失败，请稍后重试', badCredentials: '用户名或密码不正确',
-      closed: '当前暂未开放注册', registerLimit: '今日注册次数已达上限，请明天再试',
+      closed: '当前暂未开放注册', registerLimit: '注册次数已达上限，每日北京时间 08:00 重置',
       taken: '用户名已存在', full: '注册名额已满，请稍后再试', throttle: '尝试过于频繁，请 {minutes} 分钟后再试'
     },
     en: {
@@ -32,7 +32,7 @@
       registerTimeout: 'Request timed out. Your account may have been created; try signing in first.',
       failed: 'Unable to complete this request. Please try again later.',
       badCredentials: 'Incorrect username or password', closed: 'Registration is currently closed',
-      registerLimit: 'Daily registration limit reached. Please try again tomorrow.',
+      registerLimit: 'Daily registration limit reached. Resets at 08:00 China Standard Time (UTC+8).',
       taken: 'This username is already taken', full: 'Registration is full. Please try again later.',
       throttle: 'Too many attempts. Please try again in {minutes} minutes.'
     }
@@ -47,7 +47,7 @@
     var known = { '请输入用户名和密码': 'missing', '两次输入的密码不一致': 'mismatch',
       '密码至少 8 位': 'passwordRule', '用户名需为 3-32 位字母、数字、下划线或连字符': 'usernameRule',
       '用户名或密码不正确': 'badCredentials', '当前暂未开放注册': 'closed',
-      '今日注册次数已达上限，请明天再试': 'registerLimit', '用户名已存在': 'taken',
+      '今日注册次数已达上限，请明天再试': 'registerLimit', '注册次数已达上限，每日北京时间 08:00 重置': 'registerLimit', '用户名已存在': 'taken',
       '注册名额已满，请稍后再试': 'full' };
     var minutes = serverError.match(/^尝试过于频繁，请 (\d+) 分钟后再试$/);
     if (minutes) return d.throttle.replace('{minutes}', minutes[1]);

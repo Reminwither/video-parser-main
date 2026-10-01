@@ -453,10 +453,8 @@ _ANALYSIS_SLOTS = threading.BoundedSemaphore(max(1, int(os.getenv("MAX_CONCURREN
 _TRANSCRIBE_SLOTS = threading.BoundedSemaphore(max(1, int(os.getenv("MAX_CONCURRENT_TRANSCRIBE", "1"))))
 
 
-def _allow_user_action(user: dict, action: str, default_limit: int) -> bool:
-    limit = max(0, int(os.getenv(f"DAILY_{action.upper()}_LIMIT", str(default_limit))))
-    site_default = {"parse": 300, "upload": 30, "play": 50, "download": 50, "analysis": 10, "transcribe": 30}[action]
-    site_limit = max(0, int(os.getenv(f"DAILY_SITE_{action.upper()}_LIMIT", str(site_default))))
+def _allow_user_action(user: dict, action: str) -> bool:
+    limit, site_limit = auth_db.action_quota_limits(action)
     return auth_db.consume_daily_quotas([
         (f"user:{user['id']}", action, limit),
         ("site", action, site_limit),
@@ -488,9 +486,10 @@ def parse_video(url: str, platform: str, request: gr.Request = None) -> tuple:
         auth_db.record_usage("parse", metric_platform, "busy")
         return "当前解析任务较多，请稍后重试", _info_bar_html("当前解析任务较多", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
     try:
-        if not _allow_user_action(user, "parse", 30):
+        if not _allow_user_action(user, "parse"):
             auth_db.record_usage("parse", metric_platform, "quota")
-            return "今日解析次数已用完，请明天再试", _info_bar_html("今日解析次数已用完", "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
+            message = auth_db.quota_notice(user["id"], "parse")
+            return message, _info_bar_html(message, "", ok=False), gr.update(visible=False), "", EMPTY_GUIDE_HTML, {}
         import asyncio
         status, info, cover, video_url, guide, video_info = asyncio.run(_async_parse_video(url, platform, user["id"]))
         if video_info:
@@ -559,8 +558,8 @@ def upload_owned_video(file_path: str | None, platform: str, request: gr.Request
     if not _TRANSFER_SLOTS.acquire(blocking=False):
         return rejected("当前视频加载任务较多，请稍后重试", "busy")
     try:
-        if not _allow_user_action(user, "upload", 5):
-            return rejected("今日视频上传次数已用完，请明天再试", "quota")
+        if not _allow_user_action(user, "upload"):
+            return rejected(auth_db.quota_notice(user["id"], "upload"), "quota")
         cache_key = f"vp-u{int(user['id'])}-{secrets.token_hex(16)}"
         cache_path = Path(client.cache_dir) / f"{cache_key}_play.mp4"
         temporary_path = cache_path.with_suffix(".part")
@@ -676,8 +675,8 @@ def play_video(video_info: dict, progress=gr.Progress(), request: gr.Request = N
     if not _TRANSFER_SLOTS.acquire(blocking=False):
         return gr.update(visible=False), "当前下载任务较多，请稍后重试"
     try:
-        if not _allow_user_action(user, "play", 10):
-            return gr.update(visible=False), "今日播放加载次数已用完，请明天再试"
+        if not _allow_user_action(user, "play"):
+            return gr.update(visible=False), auth_db.quota_notice(user["id"], "play")
         import asyncio
         video_path, status = asyncio.run(_async_play_video(progress, video_info))
     finally:
@@ -855,8 +854,8 @@ def download_video(video_info: dict, progress=gr.Progress(), request: gr.Request
     if not _TRANSFER_SLOTS.acquire(blocking=False):
         return gr.update(visible=False), "当前下载任务较多，请稍后重试"
     try:
-        if not _allow_user_action(user, "download", 10):
-            return gr.update(visible=False), "今日下载次数已用完，请明天再试"
+        if not _allow_user_action(user, "download"):
+            return gr.update(visible=False), auth_db.quota_notice(user["id"], "download")
         import asyncio
         filepath, status = asyncio.run(_async_download_video(progress, video_info))
     finally:
@@ -991,8 +990,8 @@ def _load_media_for_processing(user: dict, video_info: dict, progress) -> tuple[
     if not _TRANSFER_SLOTS.acquire(blocking=False):
         return None, "当前视频加载任务较多，请稍后重试", "busy"
     try:
-        if not _allow_user_action(user, "play", 10):
-            return None, "今日视频加载次数已用完，请明天再试", "quota"
+        if not _allow_user_action(user, "play"):
+            return None, auth_db.quota_notice(user["id"], "play"), "quota"
         import asyncio
         loaded_path, load_status = asyncio.run(_async_play_video(progress, video_info))
     finally:
@@ -1055,9 +1054,9 @@ def transcribe_video_only(video_info: dict | None = None, progress=gr.Progress()
         if not media.audio_tracks:
             auth_db.record_usage("transcribe", platform, "invalid", "no_audio", int((time.monotonic() - started) * 1000))
             return _analysis_result(REPORT_PLACEHOLDER, "视频没有音轨，无法进行语音转写")
-        if not _allow_user_action(user, "transcribe", 5):
+        if not _allow_user_action(user, "transcribe"):
             auth_db.record_usage("transcribe", platform, "quota")
-            return _analysis_result(REPORT_PLACEHOLDER, "今日独立转写次数已用完，请明天再试")
+            return _analysis_result(REPORT_PLACEHOLDER, auth_db.quota_notice(user["id"], "transcribe"))
         with tempfile.TemporaryDirectory(prefix="vp_asr_") as temp_dir:
             cues, transcript_status, warning = transcribe_audio(
                 media_path, media, temp_dir,
@@ -1115,9 +1114,9 @@ def extract_video_content(multi_speaker: bool = False, video_info: dict | None =
             auth_db.record_usage("analysis", metric_platform, load_outcome, "upstream" if load_outcome == "failed" else "")
             return _analysis_result(REPORT_PLACEHOLDER, load_error)
 
-        if not _allow_user_action(user, "analysis", 2):
+        if not _allow_user_action(user, "analysis"):
             auth_db.record_usage("analysis", metric_platform, "quota")
-            return _analysis_result(REPORT_PLACEHOLDER, "今日 AI 分析次数已用完，请明天再试")
+            return _analysis_result(REPORT_PLACEHOLDER, auth_db.quota_notice(user["id"], "analysis"))
         qwen_client = OpenAI(
             base_url=QWEN_API_BASE_URL,
             api_key=QWEN_API_KEY,
@@ -1901,7 +1900,7 @@ def create_app():
                 </div>
               </div>
               <div class="vp-help-notes" data-i18n="help_notes">生成的视频、转写与报告将在约 48 小时后清理 · 处理时自动加载视频</div>
-              <div class="vp-help-notes"><a href="/data-policy">使用与数据说明 / Data &amp; usage</a></div>
+              <div class="vp-help-notes"><a href="/account">查看我的剩余额度 / My daily allowance</a> · <a href="/data-policy">使用与数据说明 / Data &amp; usage</a></div>
             </div>
             """
         )
@@ -2099,8 +2098,8 @@ if __name__ == "__main__":
     # 样式经 <link> 注入 <head>（static/css/app.css，改 CSS 无需重启服务），
     # 主题脚本内联注入，head 解析期间同步应用主题，杜绝闪屏与布局抖动。
     # ?v= 版本号防缓存：CSS 迭代后强制浏览器拉新（否则旧样式会残留在用户端）
-    HEAD_CONTENT = ('<link rel="stylesheet" href="/static/css/app.css?v=20261001a">\n' + THEME_SCRIPT
-                    + '<script src="/static/js/auth-modal.js?v=20261001a" defer></script>')
+    HEAD_CONTENT = ('<link rel="stylesheet" href="/static/css/app.css?v=20261001b">\n' + THEME_SCRIPT
+                    + '<script src="/static/js/auth-modal.js?v=20261001b" defer></script>')
     try:
         combined_app = gr.mount_gradio_app(
             api_app, app, path="/",

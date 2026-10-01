@@ -20,7 +20,7 @@ import hmac
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # ==================== 配置 ====================
 
@@ -39,6 +39,12 @@ ACCOUNT_LOCK_SECONDS = 15 * 60
 PBKDF2_ITERATIONS = 240_000
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")
+
+ACTION_QUOTAS = {
+    "parse": ("视频解析", 30, 300), "upload": ("视频上传", 5, 30),
+    "play": ("视频加载", 10, 50), "download": ("视频下载", 10, 50),
+    "transcribe": ("语音转写", 5, 30), "analysis": ("AI 分析", 2, 10),
+}
 
 # SQLite 跨线程：每线程独立连接（threading.local 保存，避免
 # "SQLite objects created in a thread" —— 曾把连接缓存在函数对象上导致
@@ -396,6 +402,62 @@ def consume_daily_quotas(items: list[tuple[str, str, int]]) -> bool:
             )
         c.commit()
         return True
+
+
+def action_quota_limits(action: str) -> tuple[int, int]:
+    """Use the same configured caps for enforcement and the account display."""
+    action = "upload" if action == "upload_http" else action
+    _, user_default, site_default = ACTION_QUOTAS[action]
+    return (max(0, int(os.getenv(f"DAILY_{action.upper()}_LIMIT", str(user_default)))),
+            max(0, int(os.getenv(f"DAILY_SITE_{action.upper()}_LIMIT", str(site_default)))))
+
+
+def user_daily_quota(user_id: int, now: datetime | None = None) -> dict:
+    """Read only the user's counters; expose site availability without site totals."""
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    day = now.strftime("%Y-%m-%d")
+    reset = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    reset_local = reset.astimezone(timezone(timedelta(hours=8)))
+    with _DB_LOCK:
+        rows = _db().execute(
+            "SELECT subject, action, count FROM daily_quota WHERE day = ? AND subject IN (?, 'site')",
+            (day, f"user:{int(user_id)}"),
+        ).fetchall()
+    counts = {(row["subject"], row["action"]): row["count"] for row in rows}
+    items = []
+    for action, (label, _, _) in ACTION_QUOTAS.items():
+        limit, site_limit = action_quota_limits(action)
+        counters = ("upload", "upload_http") if action == "upload" else (action,)
+        used = max(counts.get((f"user:{int(user_id)}", key), 0) for key in counters)
+        site_available = all(counts.get(("site", key), 0) < site_limit for key in counters)
+        item = {"action": action, "label": label, "limit": limit,
+                "remaining": max(0, limit - used), "site_available": site_available}
+        if action == "upload":
+            item["stages"] = [
+                {"action": key, "label": stage_label,
+                 "remaining": max(0, limit - counts.get((f"user:{int(user_id)}", key), 0)),
+                 "site_available": counts.get(("site", key), 0) < site_limit}
+                for key, stage_label in (("upload_http", "上传新文件"), ("upload", "使用已上传视频"))
+            ]
+        items.append(item)
+    return {"reset_at": reset.isoformat(), "reset_label": reset_local.strftime("北京时间 %m月%d日 08:00"), "items": items}
+
+
+def quota_notice(user_id: int, action: str) -> str:
+    snapshot = user_daily_quota(user_id)
+    display_action = "upload" if action == "upload_http" else action
+    item = next(row for row in snapshot["items"] if row["action"] == display_action)
+    if display_action == "upload":
+        # Receiving a new file and importing an already received file reserve
+        # separate counters. Report the counter that actually rejected this call.
+        item = next(stage for stage in item["stages"] if stage["action"] == action)
+    if item["remaining"] == 0:
+        message = f"今日{item['label']}额度已用完"
+    elif not item["site_available"]:
+        message = f"本站今日{item['label']}处理额度已满"
+    else:
+        return "处理额度暂不可用，请稍后重试；可在账户页查看剩余额度"
+    return f"{message}；{snapshot['reset_label']}重置，可在账户页查看剩余额度"
 
 
 def get_user_by_username(username: str):

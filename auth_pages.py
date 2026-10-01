@@ -194,10 +194,32 @@ def register_page(next_url: str = "/", error: str = "") -> str:
     return _page("注册", body)
 
 
-def account_page(user: dict, sessions_active: int = 0, error: str = "", ok: str = "") -> str:
+def account_page(user: dict, sessions_active: int = 0, error: str = "", ok: str = "", quotas: dict | None = None) -> str:
     err_html = f'<div class="msg err">{_html.escape(error)}</div>' if error else ""
     ok_html = f'<div class="msg ok">{_html.escape(ok)}</div>' if ok else ""
     admin_badge = ' <span class="badge" data-i18n="admin">管理员</span>' if user.get("is_admin") else ""
+    quota_html = ""
+    if quotas:
+        rows = ""
+        for item in quotas["items"]:
+            label = "上传并使用新视频" if item["action"] == "upload" else item["label"]
+            details = ""
+            for stage in item.get("stages", []):
+                details += (
+                    '<small style="display:block;color:var(--text-sub);line-height:1.6">'
+                    f"{_html.escape(stage['label'])}：剩余 {int(stage['remaining'])} / {int(item['limit'])} 次"
+                    + (" · 本站今日额度已满" if not stage["site_available"] else "") + "</small>"
+                )
+            rows += (
+                f"<div><span>{_html.escape(label)}</span><span>剩余 {int(item['remaining'])} / {int(item['limit'])} 次"
+                + (" · 本站今日额度已满" if not item["site_available"] else "") + details + "</span></div>"
+            )
+        quota_html = f"""
+  <section style="margin:20px 0" aria-labelledby="quota-title">
+    <h2 id="quota-title" style="font-size:16px;margin-bottom:10px">当前试用额度</h2>
+    <div class="info-rows" style="font-size:13px">{rows}</div>
+    <p style="font-size:12px;color:var(--text-sub);line-height:1.6;margin-top:10px">{_html.escape(quotas['reset_label'])}重置。上传并使用新视频需要两个步骤均有剩余次数；已上传的视频可按“使用已上传视频”的剩余次数继续使用。任务受理后失败也可能计次；剩余次数还受全站额度与并发限制。重复读取这些信息不会扣除额度。</p>
+  </section>"""
     delete_form = "" if user.get("is_admin") else """
   <form method="post" action="/account/delete" onsubmit="return confirm('确定永久删除此账号吗？')">
     <label for="delete_password">删除账号</label>
@@ -217,6 +239,7 @@ def account_page(user: dict, sessions_active: int = 0, error: str = "", ok: str 
     <div><span>活跃会话</span><span>{sessions_active} 个</span></div>
   </div>
   <div class="foot"><a href="/account/files">最近的分析报告与转写文件 →</a></div>
+  {quota_html}
   <form method="post" action="/account/password">
     <label for="old_password">当前密码</label>
     <input id="old_password" name="old_password" type="password" autocomplete="current-password" required>

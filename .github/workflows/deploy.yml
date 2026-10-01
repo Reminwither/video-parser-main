@@ -27,7 +27,8 @@ jobs:
           package-manager-cache: false
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run test:auth
-      - run: python3 -m py_compile app.py auth_pages.py
+      - run: python3 -m unittest test_quota_display
+      - run: python3 -m py_compile app.py api.py auth_pages.py auth_db.py auth_middleware.py
   deploy:
     name: SSH deploy & restart service
     needs: validate

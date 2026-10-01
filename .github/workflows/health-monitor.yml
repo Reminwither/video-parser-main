@@ -28,8 +28,9 @@ jobs:
                   expires = ssl.cert_time_to_seconds(secured.getpeercert()["notAfter"])
           remaining = expires - time.time()
           print("HTTPS certificate expires:", datetime.datetime.fromtimestamp(expires, datetime.timezone.utc).isoformat())
-          if remaining < 24 * 3600:
-              raise SystemExit("HTTPS certificate has less than 24 hours remaining; check renewal and proxy reload")
+          print(f"HTTPS certificate hours remaining: {remaining / 3600:.2f}")
+          if remaining <= 24 * 3600:
+              raise SystemExit("HTTPS certificate has at most 24 hours remaining; check renewal and proxy reload")
           PY
 
           curl "${options[@]}" --fail "$base/health" |

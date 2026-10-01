@@ -139,16 +139,13 @@ class SessionAuthMiddleware:
                 await send({"type": "http.response.body", "body": b'{"detail":"Forbidden"}'})
                 return
             action = {
-                "/api/parse": ("parse", 30),
-                "/api/download": ("download", 10),
-                "/gradio_api/upload": ("upload_http", 5),
+                "/api/parse": "parse",
+                "/api/download": "download",
+                "/gradio_api/upload": "upload_http",
             }.get(path)
             if scope.get("type") == "http" and scope.get("method") == "POST" and action:
-                name, default_limit = action
-                config_name = "upload" if name == "upload_http" else name
-                site_default = {"parse": 300, "download": 50, "upload": 30}[config_name]
-                limit = max(0, int(os.getenv(f"DAILY_{config_name.upper()}_LIMIT", str(default_limit))))
-                site_limit = max(0, int(os.getenv(f"DAILY_SITE_{config_name.upper()}_LIMIT", str(site_default))))
+                name = action
+                limit, site_limit = auth_db.action_quota_limits(name)
                 if not auth_db.consume_daily_quotas([
                     (f"user:{session['id']}", name, limit), ("site", name, site_limit),
                 ]):
@@ -158,7 +155,7 @@ class SessionAuthMiddleware:
                     })
                     await send({
                         "type": "http.response.body",
-                        "body": b'{"retcode":429,"retdesc":"Daily quota exceeded","succ":false}',
+                        "body": json.dumps({"retcode": 429, "retdesc": auth_db.quota_notice(session["id"], name), "succ": False}, ensure_ascii=False).encode("utf-8"),
                     })
                     return
             # 会话有效：把用户信息挂到 scope 供路由/ Gradio fn 读取
