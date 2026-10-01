@@ -6,6 +6,10 @@ name: Deploy video-parser admin
     paths:
       - 'admin/**'
       - '.github/workflows/deploy-admin.yml'
+      - 'ops/deploy-admin-container.sh'
+      - 'ops/validation-requirements.txt'
+      - 'test_admin_release.py'
+      - 'test_report_metrics.py'
   workflow_dispatch:
 
 concurrency:
@@ -21,7 +25,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: python3 -m pip install -r ops/validation-requirements.txt
-      - run: python3 -m unittest test_report_metrics
+      - run: python3 -m unittest test_report_metrics test_admin_release
+      - run: bash -n ops/deploy-admin-container.sh
       - run: python3 -m py_compile admin/app.py
   deploy:
     name: SSH deploy admin (7861, loopback only)
@@ -89,34 +94,5 @@ jobs:
             git reset --hard FETCH_HEAD
             rm -f deploy.bundle
 
-            echo "==> [2/4] 构建后台镜像（tuna pip 源）"
-            docker build -t video-parser-admin /opt/video-parser-admin/admin
-
-            echo "==> [3/4] 停掉旧容器"
-            docker stop video-parser-admin || true
-            docker rm video-parser-admin || true
-
-            echo "==> [4/4] 启动（7861 仅本机监听，通过 Caddy 的 /admin/ 路由访问）"
-            docker run -d \
-              --name video-parser-admin \
-              --restart unless-stopped \
-              -p 127.0.0.1:7861:7861 \
-              --env-file /opt/video-parser/.env.admin \
-              -e AUTH_DB_PATH=/opt/video-parser/data/auth.db \
-              -e ASSETS_DIR=/opt/video-parser/downloads \
-              -e LOGS_DIR=/opt/video-parser/logs \
-              -e SESSION_COOKIE_SECURE=1 \
-              -v /opt/video-parser:/opt/video-parser:ro \
-              video-parser-admin:latest
-
-            for attempt in 1 2 3 4 5 6 7 8; do
-              if curl -fsS http://127.0.0.1:7861/health >/dev/null; then
-                break
-              fi
-              if [ "$attempt" -eq 8 ]; then
-                echo "Health check failed"
-                exit 1
-              fi
-              sleep 5
-            done
+            bash ops/deploy-admin-container.sh
             echo "==> ADMIN DEPLOY DONE $(date)"

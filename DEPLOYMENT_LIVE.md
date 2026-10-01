@@ -30,3 +30,5 @@
 历史上曾通过 http://110.40.138.167:7860 直连；该入口已停用。域名购入后，可将 Caddy 与 DOMAIN 改为域名，并切换到常规自动 HTTPS 证书。
 
 主站部署前会运行 `npm ci --ignore-scripts`、`npm run test:auth`、安装 `ops/validation-requirements.txt` 后执行 `python3 -m unittest test_quota_display test_auth_payload test_report_metrics test_private_files`，并检查 Python 语法。后台部署前也执行报告统计检查和语法检查。认证弹窗的 DOM 行为检查使用 Node.js 24.16.0 和 jsdom；它不测布局，不发生产请求，也不处理用户凭据。报告统计检查使用隔离内存数据库与实际 ASGI 中间件和后台路由，覆盖旧表升级、导出去重、中断传输、反馈更新和账号删除。
+
+后台部署通过 `ops/deploy-admin-container.sh` 先构建候选镜像，再重建容器；检查本机数据库健康、登录入口、匿名看板重定向及公网 HTTPS。启动或验证失败时恢复部署前的确切镜像 ID；构建失败不停止现有容器。首次部署没有可恢复镜像时会明确报错。4 项 Bash 故障演练使用模拟 Docker/HTTP，覆盖成功、构建失败、启动/健康/访问边界失败和恢复失败，并加入后台发布门槛。

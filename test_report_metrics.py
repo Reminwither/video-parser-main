@@ -199,6 +199,7 @@ class ExportDeliveryTests(unittest.TestCase):
             sent.append(message)
 
         with patch.object(auth_db, "get_session_user", return_value={"id": 1} if user else None), \
+             patch.object(auth_db, "uploaded_file_access", return_value=False), \
              patch.object(auth_db, "record_artifact_export") as record:
             if fail_send:
                 with self.assertRaises(ConnectionError):
@@ -209,11 +210,14 @@ class ExportDeliveryTests(unittest.TestCase):
 
     def test_both_download_entries_record_only_after_full_response(self):
         for path in ("/account/files/" + self.name, "/gradio_api/file=/tmp/gradio/x/" + self.name,
-                     "/file=E:%5Ccache%5C" + self.name):
+                     "/file=%2Ftmp%2Fcache%2F" + self.name):
             with self.subTest(path=path):
                 record, sent = self.request(path)
                 record.assert_called_once_with(1, self.name)
                 self.assertEqual(b"".join(m.get("body", b"") for m in sent), b"partend")
+        # Windows separators are recognized without asking Linux to serve a
+        # Windows filesystem path; middleware tests never access the real DB.
+        self.assertEqual(auth_middleware._export_filename("/file=E:%5Ccache%5C" + self.name, 1), self.name)
 
     def test_preview_head_partial_missing_and_unauthorized_do_not_count(self):
         cases = [dict(path="/account/files/" + self.name + "/preview"), dict(method="HEAD"),
