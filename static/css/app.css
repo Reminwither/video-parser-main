@@ -13,7 +13,7 @@
   --vp-border-strong: #d4d4d8;
   --vp-text: #1a1a1a;             /* TikHub --foreground */
   --vp-text-sub: #6b7280;         /* TikHub --muted */
-  --vp-text-mute: #9ca3af;
+  --vp-text-mute: #737373;
   --vp-fg: #1a1a1a;               /* 实心按钮底（TikHub bg-foreground） */
   --vp-fg-hover: #2d2d30;
   --vp-invert: #ffffff;           /* 实心底上的反色文字（TikHub text-background） */
@@ -42,7 +42,7 @@ html[data-theme="dark"] {
   --vp-border-strong: #3f3f46;
   --vp-text: #f2f2f0;
   --vp-text-sub: #9ca3af;
-  --vp-text-mute: #71717a;
+  --vp-text-mute: #a1a1aa;
   --vp-fg: #f2f2f0;
   --vp-fg-hover: #e4e4e7;
   --vp-invert: #17171d;
@@ -181,6 +181,7 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #52525b; }
    因此：圆环改用 outline（Gradio 不抢占该属性，且现代浏览器 outline 跟随 border-radius 成圆），
    图标用 flex:0 0 15px 锁死尺寸防止被 flex 压缩。 */
 .vp-theme-round {
+  padding: 0 !important;
   width: 32px; height: 32px; border-radius: 999px !important; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
   background: transparent !important;
@@ -202,6 +203,7 @@ html[data-theme="dark"] .vp-theme-round .vp-icon-moon { display: none !important
 
 /* 语言切换按钮：与主题钮同形（圆形轮廓 pill），放主题钮左侧 */
 .vp-lang-round {
+  padding: 0 9px !important;
   height: 32px; min-width: 32px; padding: 0 9px; border-radius: 999px !important; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
   background: transparent !important; border: none;
@@ -274,7 +276,7 @@ html[data-theme="dark"] .vp-theme-round .vp-icon-moon { display: none !important
   color: var(--vp-text); margin: 0 0 20px;
 }
 .vp-hero-accent {
-  color: color-mix(in srgb, var(--vp-accent) 75%, transparent);
+  color: var(--vp-accent);
 }
 .vp-hero-sub {
   font-size: 17px; line-height: 1.7; color: var(--vp-text-sub);
@@ -288,6 +290,10 @@ html[data-theme="dark"] .vp-theme-round .vp-icon-moon { display: none !important
 .vp-report-history { margin: 8px 0 14px; font-size: 13px; }
 .vp-report-history a { color: var(--vp-accent) !important; text-decoration: none !important; }
 .vp-report-history a:hover { text-decoration: underline !important; }
+.vp-report-history p { margin-top: 6px; line-height: 1.6; color: var(--vp-text-sub); }
+.vp-mode-title { font-size: 15px; font-weight: 600; color: var(--vp-text); margin: 0 0 6px; }
+.vp-mode-hint, .vp-platform-hint { font-size: 13px; line-height: 1.65; color: var(--vp-text-sub); margin: 0; }
+.vp-platform-hint { margin-top: 8px; }
 @media (max-width: 640px) {
   .vp-hero { padding: 32px 0 4px; }
   .vp-hero-title { font-size: 32px; }
@@ -306,6 +312,8 @@ html[data-theme="dark"] .vp-theme-round .vp-icon-moon { display: none !important
 
 /* ============ 卡片（白底 + 细边框 + 无 blur） ============ */
 html body .gradio-container .vp-card {
+  min-width: 0;
+  box-sizing: border-box;
   background: var(--vp-surface) !important;
   border: 1px solid var(--vp-border) !important;
   border-radius: var(--vp-radius-card) !important;
@@ -530,6 +538,9 @@ html[data-theme="dark"] .vp-warn {
 .vp-report td { padding: 9px 12px; border: 1px solid var(--vp-border); color: var(--vp-text-sub); vertical-align: top; }
 .vp-report tr:hover td { background: var(--vp-surface-2); }
 .vp-report pre, .vp-report code { font-family: "Geist Mono", ui-monospace, monospace !important; }
+.vp-report pre { white-space: pre-wrap !important; overflow-wrap: anywhere; max-width: 100%; overflow-x: auto; }
+.vp-report p, .vp-report li, .vp-report td { overflow-wrap: anywhere; }
+html body .gradio-container .vp-report table { display: block !important; max-width: 100%; overflow-x: auto; }
 .vp-report blockquote {
   border-left: 3px solid var(--vp-border-strong);
   padding-left: 14px; color: var(--vp-text-sub); margin: 10px 0;
@@ -595,13 +606,28 @@ html[data-theme="dark"] .vp-warn {
   :root { --vp-nav-h: 58px; }
   .vp-nav-inner { height: 58px; }
   .vp-cta-pill { padding: 0 12px; font-size: 12px; }
-  .vp-login-link { display: none; }
+  .vp-nav-inner { gap: 8px; }
+  .vp-nav-right { gap: 4px; min-width: 0; }
+  .vp-nav-right .vp-cta-pill { display: none; }
+  .vp-theme-round, .vp-lang-round { min-width: 44px; width: 44px; height: 44px; }
+  .vp-login-link { min-height: 44px; padding: 0 6px; font-size: 13px; flex-shrink: 0; }
+  #vp-login-link { max-width: 88px; overflow: hidden; }
+  #vp-logout-link { font-size: 12px; }
+  .vp-user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .gradio-container .vp-url textarea, .gradio-container input:not([type="checkbox"]):not([type="radio"]),
+  .gradio-container select { font-size: 16px !important; }
+  .vp-empty-state { min-height: 220px; padding: 24px 16px; }
+  .vp-empty-flow { flex-wrap: wrap; justify-content: center; }
+  .example-btn { min-height: 44px; }
   html body .gradio-container .vp-card {
     padding: 18px !important;
     border-radius: 14px !important;
   }
   .vp-help-item { padding: 14px 16px; }
   .vp-report table { font-size: 12.5px; }
+}
+@media (max-width: 380px) {
+  .vp-nav .vp-brand-name { display: none; }
 }
 
 /* ============================================================
@@ -832,8 +858,12 @@ html body .gradio-container .prose .vp-hero-title {
   font-size: 46px !important;
   color: var(--vp-text) !important;
 }
+/* Keep the phone rule after the equally specific Gradio typography override. */
+@media (max-width: 640px) {
+  html body .gradio-container .prose .vp-hero-title { font-size: 32px !important; line-height: 1.2; }
+}
 html body .gradio-container .prose .vp-hero-accent {
-  color: color-mix(in srgb, var(--vp-accent) 75%, transparent) !important;
+  color: var(--vp-accent) !important;
 }
 html body .gradio-container .prose .vp-hero-sub { color: var(--vp-text-sub) !important; }
 html body .gradio-container .prose .vp-hero-eyebrow { color: var(--vp-accent) !important; }

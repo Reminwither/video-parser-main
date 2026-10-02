@@ -1228,7 +1228,7 @@ REPORT_PLACEHOLDER = """
     </svg>
   </div>
   <div class="vp-report-empty-head">分析与转写结果将在这里生成</div>
-  <div class="vp-report-empty-sub">先解析视频，再选择「仅语音转写」或「AI 时间轴证据分析」；视频会自动加载</div>
+  <div class="vp-report-empty-sub">粘贴链接解析，或上传自有视频，再选择「语音转写」或「AI 分析」；不必先播放或下载</div>
 </div>
 """
 
@@ -1241,14 +1241,14 @@ EMPTY_GUIDE_HTML = """
       <path d="M10 9.2v5.6l5-2.8-5-2.8z" fill="currentColor"/>
     </svg>
   </div>
-  <div class="vp-empty-head" data-i18n="empty_head">等待视频解析</div>
-  <div class="vp-empty-desc" data-i18n="empty_desc">在左侧粘贴视频链接并点击「解析视频」，即可在此生成封面与在线播放</div>
+  <div class="vp-empty-head" data-i18n="empty_head">等待导入视频</div>
+  <div class="vp-empty-desc" data-i18n="empty_desc">粘贴链接解析或上传自有 MP4，然后选择语音转写或 AI 分析。预览和下载可按需使用。</div>
   <div class="vp-empty-flow">
-    <span class="vp-flow-step"><i>1</i><span data-i18n="empty_s1">粘贴链接</span></span>
+    <span class="vp-flow-step"><i>1</i><span data-i18n="empty_s1">导入视频</span></span>
     <span class="vp-flow-arrow">→</span>
-    <span class="vp-flow-step"><i>2</i><span data-i18n="empty_s2">解析视频</span></span>
+    <span class="vp-flow-step"><i>2</i><span data-i18n="empty_s2">转写 / 分析</span></span>
     <span class="vp-flow-arrow">→</span>
-    <span class="vp-flow-step"><i>3</i><span data-i18n="empty_s3">AI 取证</span></span>
+    <span class="vp-flow-step"><i>3</i><span data-i18n="empty_s3">查看结果</span></span>
   </div>
 </div>
 """
@@ -1293,13 +1293,15 @@ THEME_SCRIPT = """
       nav_parse: "视频解析", nav_ai: "AI 分析", nav_help: "使用指南",
       nav_login: "登录", nav_start: "开始使用", nav_logout: "退出",
       hero_eyebrow: "视频智能分析平台",
-      hero_title_a: "解析 · 下载 · ", hero_title_b: "AI 取证",
+      hero_title_a: "解析 · 转写 · ", hero_title_b: "AI 分析",
       hero_sub: "粘贴公开视频链接或上传有权使用的 MP4，随后播放、下载、转写或生成时间轴证据报告。链接可用性取决于来源平台的访问限制。",
       hero_demo: "先看一份报告示例 →",
-      sec_parse: "解析视频", sec_preview: "预览", sec_report: "分析与转写结果", sec_help: "使用指南",
-      empty_head: "等待视频解析",
-      empty_desc: "在左侧解析视频链接或上传自有 MP4，即可在此预览",
-      empty_s1: "粘贴链接", empty_s2: "解析视频", empty_s3: "AI 取证",
+      sec_parse: "导入视频", sec_preview: "预览", sec_report: "分析与转写结果", sec_help: "使用指南",
+      mode_title: "选择处理方式", mode_hint: "导入视频后可直接转写或分析，不必先播放或下载。AI 分析会在语音识别可用时包含转写。",
+      optional_media: "可选：播放或下载", platform_hint: "平台按钮用于选择来源。小红书需完整分享链接；视频号请展开下方上传入口。",
+      empty_head: "等待导入视频",
+      empty_desc: "粘贴链接解析或上传自有 MP4，然后选择语音转写或 AI 分析。预览和下载可按需使用。",
+      empty_s1: "导入视频", empty_s2: "转写 / 分析", empty_s3: "查看结果",
       help_t1: "粘贴链接或上传", help_d1: "抖音、B站可粘贴分享链接；小红书请复制 App 内完整链接，无法访问时可上传自有 MP4；视频号需上传自有 MP4。",
       help_t2: "解析视频", help_d2: "封面、时长与视频信息一屏展示，无需手动选择来源",
       help_t3: "播放 / 下载", help_d3: "在线播放使用临时缓存；可下载平台提供的媒体流（B 站自动合并音视频）",
@@ -1310,6 +1312,7 @@ THEME_SCRIPT = """
       vp_in_url: "视频链接", vp_btn_parse: "解析视频", vp_dd_platform: "来源平台",
       vp_btn_clear: "清空", vp_btn_play: "在线播放", vp_btn_download: "下载视频",
       vp_upload_input: "上传自有 MP4（视频号素材可用）", vp_btn_upload: "使用上传的视频",
+      vp_upload_section: "或上传自有 MP4（视频号使用此入口）",
       vp_chk_speaker: "多人转写（AI 分析）", vp_btn_extract: "AI 时间轴证据分析",
       vp_btn_transcribe: "仅语音转写 · 导出 TXT / SRT",
       vp_out_status: "状态", vp_vid: "在线播放", vp_img_cover: "视频封面", vp_file: "下载文件"
@@ -1318,13 +1321,15 @@ THEME_SCRIPT = """
       nav_parse: "Parse", nav_ai: "AI Analysis", nav_help: "Guide",
       nav_login: "Sign in", nav_start: "Get started", nav_logout: "Sign out",
       hero_eyebrow: "Video Intelligence Platform",
-      hero_title_a: "Parse · Download · ", hero_title_b: "AI Evidence",
+      hero_title_a: "Parse · Transcribe · ", hero_title_b: "AI Analysis",
       hero_sub: "Paste a public video link or upload an MP4 you have rights to use, then play, download, transcribe or analyze it. Link availability depends on the source platform.",
       hero_demo: "See a sample report →",
-      sec_parse: "Parse Video", sec_preview: "Preview", sec_report: "Analysis & Transcript", sec_help: "Guide",
+      sec_parse: "Import Video", sec_preview: "Preview", sec_report: "Analysis & Transcript", sec_help: "Guide",
+      mode_title: "Choose a processing mode", mode_hint: "Transcribe or analyze after importing. Playback and download are optional. AI analysis includes transcription when speech recognition is available.",
+      optional_media: "Optional: play or download", platform_hint: "Buttons select the source. Use a full Xiaohongshu share link; upload your MP4 for WeChat Channels below.",
       empty_head: "Awaiting video",
-      empty_desc: "Parse a link or upload your MP4 on the left to preview it here.",
-      empty_s1: "Paste link", empty_s2: "Parse", empty_s3: "AI Evidence",
+      empty_desc: "Parse a link or upload your MP4, then choose transcription or AI analysis. Preview and download are optional.",
+      empty_s1: "Import video", empty_s2: "Transcribe / Analyze", empty_s3: "View results",
       help_t1: "Paste or upload", help_d1: "Paste Douyin or Bilibili links. For Xiaohongshu, use the full in-app share link or upload your own MP4 if access fails. Upload your own MP4 for WeChat Channels.",
       help_t2: "Parse", help_d2: "Cover, duration and video info shown on one screen, no manual source selection",
       help_t3: "Play / Download", help_d3: "Playback uses temporary cache; downloads use the source media stream (Bilibili audio and video are merged)",
@@ -1335,6 +1340,7 @@ THEME_SCRIPT = """
       vp_in_url: "Video URL", vp_btn_parse: "Parse Video", vp_dd_platform: "Source Platform",
       vp_btn_clear: "Clear", vp_btn_play: "Play Online", vp_btn_download: "Download Video",
       vp_upload_input: "Upload your MP4 (for inaccessible links)", vp_btn_upload: "Use uploaded video",
+      vp_upload_section: "Or upload your MP4 (for WeChat Channels)",
       vp_chk_speaker: "Multi-speaker (AI analysis)", vp_btn_extract: "AI Timeline Evidence",
       vp_btn_transcribe: "Transcribe only · Export TXT / SRT",
       vp_out_status: "Status", vp_vid: "Online Playback", vp_img_cover: "Cover", vp_file: "Download File"
@@ -1344,7 +1350,7 @@ THEME_SCRIPT = """
   var VP_COMP_SEL = {
     vp_in_url: "label", vp_btn_parse: "button", vp_dd_platform: "label",
     vp_btn_clear: "button", vp_btn_play: "button", vp_btn_download: "button",
-    vp_upload_input: "label", vp_btn_upload: "button",
+    vp_upload_input: "label", vp_btn_upload: "button", vp_upload_section: "button",
     vp_chk_speaker: "label", vp_btn_extract: "button", vp_btn_transcribe: "button", vp_out_status: "label",
     vp_vid: "label", vp_img_cover: "label", vp_file: "label"
   };
@@ -1420,7 +1426,9 @@ THEME_SCRIPT = """
         if (link) {
           link.removeAttribute('onclick');
           link.setAttribute('href', '/account');
-          link.innerHTML = '<span class="vp-user-dot"></span>' + name.replace(/[<>&]/g, '');
+          var dot = document.createElement('span'); dot.className = 'vp-user-dot';
+          var userName = document.createElement('span'); userName.className = 'vp-user-name'; userName.textContent = String(name);
+          link.replaceChildren(dot, userName); link.title = String(name);
         }
         var cta = document.querySelector('.vp-nav-right');
         if (cta && !document.getElementById('vp-logout-link')) {
@@ -1428,7 +1436,8 @@ THEME_SCRIPT = """
           out.id = 'vp-logout-link';
           out.className = 'vp-login-link';
           out.href = '/logout';
-          out.textContent = (vpCurLang() === 'zh') ? '退出' : 'Logout';
+          out.setAttribute('data-i18n', 'nav_logout');
+          out.textContent = (vpCurLang() === 'zh') ? '退出' : 'Sign out';
           cta.insertBefore(out, cta.querySelector('.vp-cta-pill'));
         }
       } catch (e) {}
@@ -1517,7 +1526,7 @@ def clear_all():
             gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
             REPORT_PLACEHOLDER, gr.update(value=None, visible=False),
             gr.update(value=None, visible=False), gr.update(value=None, visible=False),
-            EMPTY_GUIDE_HTML, {}, gr.update(value=None))
+            EMPTY_GUIDE_HTML, {}, gr.update(value=None), gr.update(open=False))
 
 
 # ==================== Gradio 界面 ====================
@@ -1660,7 +1669,7 @@ def create_app():
             """
             <section class="vp-hero">
               <div class="vp-hero-eyebrow"><span class="vp-hero-dot"></span><span data-i18n="hero_eyebrow">视频智能分析平台</span></div>
-              <h1 class="vp-hero-title"><span data-i18n="hero_title_a">解析 · 下载 · </span><span class="vp-hero-accent" data-i18n="hero_title_b">AI 取证</span></h1>
+              <h1 class="vp-hero-title"><span data-i18n="hero_title_a">解析 · 转写 · </span><span class="vp-hero-accent" data-i18n="hero_title_b">AI 分析</span></h1>
               <p class="vp-hero-sub" data-i18n="hero_sub">粘贴公开视频链接，解析可访问的媒体资源，播放或下载，并按时间轴生成多模态证据报告。不同平台的可用性取决于其访问限制。</p>
               <a class="vp-demo-link" href="/sample-report" data-i18n="hero_demo">先看一份报告示例 →</a>
             </section>
@@ -1686,7 +1695,7 @@ def create_app():
         with gr.Row(elem_classes=["vp-main"]):
             # ---------- 左栏：操作台（紧凑，主 CTA 独立全宽） ----------
             with gr.Column(scale=4, elem_classes=["vp-card", "vp-ops"]):
-                gr.HTML('<div class="vp-section-label"><span class="vp-section-num">01</span><span data-i18n="sec_parse">解析视频</span></div>')
+                gr.HTML('<div class="vp-section-label"><span class="vp-section-num">01</span><span data-i18n="sec_parse">导入视频</span></div>')
                 url_input = gr.Textbox(
                     label="视频链接",
                     placeholder="粘贴抖音、B站或小红书分享链接…",
@@ -1709,6 +1718,7 @@ def create_app():
                     bilibili_btn = gr.Button("B站", size="sm", elem_classes=["example-btn"])
                     xiaohongshu_btn = gr.Button("小红书", size="sm", elem_classes=["example-btn"])
                     wechat_channels_btn = gr.Button("视频号", size="sm", elem_classes=["example-btn"])
+                gr.HTML('<p class="vp-platform-hint" data-i18n="platform_hint">平台按钮用于选择来源。小红书需完整分享链接；视频号请展开下方上传入口。</p>')
 
                 # 平台选择与清空（次级）
                 with gr.Row(equal_height=True):
@@ -1723,39 +1733,35 @@ def create_app():
                     )
                     clear_btn = gr.Button("清空", variant="secondary", size="lg", scale=1, elem_classes=["vp-ghost"], elem_id="vp_btn_clear")
 
-                upload_input = gr.File(
-                    label="上传自有 MP4（链接不可用时使用）", file_types=[".mp4"], type="filepath",
-                    elem_id="vp_upload_input",
-                )
-                upload_btn = gr.Button("使用上传的视频", variant="secondary", elem_id="vp_btn_upload")
-                upload_minutes = max(1, int(os.getenv("MAX_UPLOAD_DURATION_SECONDS", "1800"))) / 60
-                gr.Markdown(
-                    f"小红书链接若无法访问、或使用视频号素材，可先从本人有权使用的素材导出 MP4 再上传"
-                    f"（最多 {max_upload_bytes() // (1024 * 1024)} MB、{upload_minutes:g} 分钟）。"
-                )
+                with gr.Accordion("或上传自有 MP4（视频号使用此入口）", open=False, elem_id="vp_upload_section") as upload_section:
+                    upload_input = gr.File(
+                        label="上传自有 MP4（链接不可用时使用）", file_types=[".mp4"], type="filepath",
+                        elem_id="vp_upload_input",
+                    )
+                    upload_btn = gr.Button("使用上传的视频", variant="secondary", elem_id="vp_btn_upload")
+                    upload_minutes = max(1, int(os.getenv("MAX_UPLOAD_DURATION_SECONDS", "1800"))) / 60
+                    gr.Markdown(
+                        f"小红书链接若无法访问、或使用视频号素材，可先从本人有权使用的素材导出 MP4 再上传"
+                        f"（最多 {max_upload_bytes() // (1024 * 1024)} MB、{upload_minutes:g} 分钟）。"
+                    )
 
                 gr.HTML('<div class="vp-divider"></div>')
 
-                # 播放 / 下载（玻璃次级按钮）
-                with gr.Row():
-                    play_btn = gr.Button("在线播放", variant="secondary", elem_classes=["vp-secondary"], elem_id="vp_btn_play")
-                    download_btn = gr.Button("下载视频", variant="secondary", elem_classes=["vp-secondary"], elem_id="vp_btn_download")
-
                 # 独立语音转写与证据分析
-                with gr.Row(equal_height=True):
-                    multi_speaker_chk = gr.Checkbox(
-                        label="多人转写（AI 分析）",
-                        value=False,
-                        interactive=speaker_avail,
-                        info=speaker_info,
-                        elem_id="vp_chk_speaker",
-                        elem_classes=["vp-toggle"],
-                    )
-                    extract_btn = gr.Button("AI 时间轴证据分析", variant="primary", interactive=AI_ANALYSIS_ENABLED,
-                                            elem_classes=["vp-extract"], elem_id="vp_btn_extract")
+                gr.HTML('<h3 class="vp-mode-title" data-i18n="mode_title">选择处理方式</h3><p class="vp-mode-hint" data-i18n="mode_hint">导入视频后可直接转写或分析，不必先播放或下载。AI 分析会在语音识别可用时包含转写。</p>')
                 transcribe_btn = gr.Button("仅语音转写 · 导出 TXT / SRT", variant="secondary",
                                            interactive=bool(os.getenv("ASR_MODEL_ID", "").strip()),
-                                           elem_id="vp_btn_transcribe")
+                                           elem_classes=["vp-secondary"], elem_id="vp_btn_transcribe")
+                multi_speaker_chk = gr.Checkbox(
+                    label="多人转写（AI 分析）",
+                    value=False,
+                    interactive=speaker_avail,
+                    info=speaker_info,
+                    elem_id="vp_chk_speaker",
+                    elem_classes=["vp-toggle"],
+                )
+                extract_btn = gr.Button("AI 时间轴证据分析", variant="primary", interactive=AI_ANALYSIS_ENABLED,
+                                        elem_classes=["vp-extract"], elem_id="vp_btn_extract")
                 asr_limit = float(os.getenv("ASR_MAX_DURATION_SECONDS", "0") or 0)
                 asr_limit_note = f"最多处理前 {asr_limit / 60:g} 分钟" if asr_limit > 0 else "处理完整音轨"
                 gr.Markdown(f"语音转写会自动加载视频；当前{asr_limit_note}。结果由机器识别，请人工核对。")
@@ -1771,6 +1777,10 @@ def create_app():
                     elem_id="vp_out_status",
                     elem_classes=["status-box"]
                 )
+                gr.HTML('<p class="vp-mode-hint" data-i18n="optional_media">可选：播放或下载</p>')
+                with gr.Row():
+                    play_btn = gr.Button("在线播放", variant="secondary", elem_classes=["vp-secondary"], elem_id="vp_btn_play")
+                    download_btn = gr.Button("下载视频", variant="secondary", elem_classes=["vp-secondary"], elem_id="vp_btn_download")
 
             # ---------- 右栏：主预览（唯一视觉锚点） ----------
             with gr.Column(scale=6, elem_classes=["vp-card", "vp-preview"]):
@@ -1831,10 +1841,14 @@ def create_app():
             (wechat_channels_btn, "视频号"),
         ):
             button.click(
-                fn=lambda value=platform_name: select_platform(value),
+                fn=lambda value=platform_name: (select_platform(value), gr.update(open=True) if value == "视频号" else gr.skip()),
                 inputs=[],
-                outputs=[platform_dropdown],
+                outputs=[platform_dropdown, upload_section],
             )
+        platform_dropdown.change(
+            fn=lambda value: gr.update(open=True) if value == "视频号" else gr.skip(),
+            inputs=[platform_dropdown], outputs=[upload_section],
+        )
 
         # 事件绑定
         parse_btn.click(
@@ -1893,7 +1907,7 @@ def create_app():
             outputs=[url_input, platform_dropdown, status_output, title_bar,
                     cover_output, video_output, download_output, content_output,
                     report_file_output, asr_text_output, asr_srt_output,
-                    guide_html, video_info_state, upload_input]
+                    guide_html, video_info_state, upload_input, upload_section]
         )
 
         # 使用指南（双列横向卡，打破同构小卡网格）
@@ -2122,7 +2136,7 @@ if __name__ == "__main__":
     # 样式经 <link> 注入 <head>（static/css/app.css，改 CSS 无需重启服务），
     # 主题脚本内联注入，head 解析期间同步应用主题，杜绝闪屏与布局抖动。
     # ?v= 版本号防缓存：CSS 迭代后强制浏览器拉新（否则旧样式会残留在用户端）
-    HEAD_CONTENT = ('<link rel="stylesheet" href="/static/css/app.css?v=20261001b">\n' + THEME_SCRIPT
+    HEAD_CONTENT = ('<link rel="stylesheet" href="/static/css/app.css?v=20261002b">\n' + THEME_SCRIPT
                     + '<script src="/static/js/auth-modal.js?v=20261001b" defer></script>')
     try:
         combined_app = gr.mount_gradio_app(

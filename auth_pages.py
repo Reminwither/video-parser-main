@@ -66,7 +66,7 @@ input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong);
   border-radius: 10px; background: var(--bg); color: var(--text); font-size: 14px; outline: none;
   transition: border-color .15s ease, box-shadow .15s ease; }
 input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
-.btn { width: 100%; margin-top: 22px; padding: 11px 0; border: none; border-radius: 10px;
+.btn { width: 100%; min-height: 44px; margin-top: 22px; padding: 11px 0; border: none; border-radius: 10px;
   background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
   transition: background .15s ease; }
 .btn:hover { background: var(--accent-hover); }
@@ -87,6 +87,23 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in sr
   font-size: 13px; border-bottom: 1px solid var(--border); }
 .info-rows div:last-child { border-bottom: none; }
 .info-rows span:first-child { color: var(--text-sub); }
+.info-rows div { gap: 8px; flex-wrap: wrap; }
+.info-rows span { min-width: 0; overflow-wrap: anywhere; }
+.card { min-width: 0; overflow-wrap: anywhere; }
+.task-list { max-height: 420px; overflow-y: auto; scrollbar-gutter: stable; padding-right: 6px; }
+.task-list:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.file-jump { display: block; margin: 14px 0; color: var(--accent); font-size: 13px; }
+#files-heading { scroll-margin-top: 72px; }
+@media (max-width: 640px) {
+  body { padding: 64px 12px 24px; align-items: flex-start; }
+  .card { padding: 24px 18px; }
+  input { font-size: 16px; }
+  .ghost, .vp-lang-btn { width: 44px; min-width: 44px; height: 44px; top: 8px; }
+  .ghost { right: 12px; }
+  .vp-lang-btn { right: 60px; }
+  .info-rows div { padding: 10px 12px; }
+  .task-list { max-height: 320px; }
+}
 .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px;
   background: var(--accent-light); color: var(--accent); font-weight: 600; }
 """
@@ -285,13 +302,13 @@ def account_files_page(user: dict, files: list[dict], csrf_token: str, error: st
             preview = (f'<a href="/account/files/{name}/preview">在线查看</a> · '
                        if item["name"].endswith((".md", ".txt")) else "")
             rows.append(f"""
-  <div class="info-rows" style="margin:12px 0;padding:12px;border:1px solid #263247;border-radius:12px">
+  <div class="info-rows" style="margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:12px">
     <div><span>{label}</span><span>{size} · {age}</span></div>
     <div style="flex-wrap:wrap;gap:8px"><span>{preview}<a href="/account/files/{name}">下载文件</a></span>
       <form method="post" action="/account/files/delete" style="display:inline;margin-left:12px" onsubmit="return confirm('确定删除这个文件吗？')">
         <input type="hidden" name="csrf_token" value="{_html.escape(csrf_token, quote=True)}">
         <input type="hidden" name="name" value="{name}">
-        <button type="submit" style="background:none;border:0;color:#f87171;cursor:pointer">删除</button>
+        <button type="submit" style="background:none;border:0;color:var(--err);cursor:pointer;min-height:44px;padding:0 8px">删除</button>
       </form></div>
   </div>""")
         file_rows = "".join(rows)
@@ -301,12 +318,13 @@ def account_files_page(user: dict, files: list[dict], csrf_token: str, error: st
 <div class="card" style="max-width:760px">
   {_brand()}
   <h1>我的分析文件</h1>
+  <a class="file-jump" href="#files-heading">跳到文件列表 ↓</a>
   <section aria-labelledby="task-heading"><h2 id="task-heading" style="font-size:18px;margin:22px 0 10px">最近任务</h2>
     <p class="sub">只显示已进入处理阶段的最近 30 个任务。刷新后可查进度和取回已保存文件；中断任务需返回工作台重试。</p>
     <a id="vp-task-refresh" href="/account/files">刷新进度</a><p id="vp-task-status" role="status" style="font-size:12px;color:var(--text-sub);margin-top:8px"></p>
-    <div id="vp-tasks" data-user-id="{int(user['id'])}">{processing_task_cards(tasks or [])}</div>
+    <div id="vp-tasks" class="task-list" role="region" aria-labelledby="task-heading" tabindex="0" data-user-id="{int(user['id'])}">{processing_task_cards(tasks or [])}</div>
   </section>
-  <h2 style="font-size:18px;margin:24px 0 10px">文件列表</h2>
+  <h2 id="files-heading" style="font-size:18px;margin:24px 0 10px">文件列表</h2>
   <p class="sub">仅显示当前账号生成的文件，最多展示最近 100 个。文件在超过 48 小时后的每日清理时删除。</p>
   {err_html}{ok_html}<div id="vp-account-files">{file_rows}</div>
   <div class="foot"><a href="/account">← 账户设置</a> · <a href="/">返回工作台</a></div>
